@@ -77,7 +77,7 @@ class MlExportAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         input_layers = self.parameterAsLayerList(parameters, self.INPUTS, context)
-        separate = self.parameterAsBool(parameters, self.SEPARATE, context)
+        separate = self.parameterAsBoolean(parameters, self.SEPARATE, context)
         output_path = self.parameterAsFileOutput(parameters, self.OUTPUT, context)
 
         if not input_layers:

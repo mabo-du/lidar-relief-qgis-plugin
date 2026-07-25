@@ -16,6 +16,7 @@ from .algorithms.svf_algorithm import SvfAlgorithm
 from .algorithms.slope_algorithm import SlopeAlgorithm
 from .algorithms.ruggedness_algorithm import RuggednessAlgorithm
 from .algorithms.batch_algorithm import BatchAlgorithm
+from .algorithms.contact_sheet_algorithm import ContactSheetAlgorithm
 from .algorithms.openness_algorithm import OpennessAlgorithm
 from .algorithms.mstp_algorithm import MstpAlgorithm
 from .algorithms.blend_algorithm import BlendAlgorithm
@@ -29,6 +30,7 @@ from .algorithms.ml_export_algorithm import MlExportAlgorithm
 from .algorithms.cog_export_algorithm import CogExportAlgorithm
 from .algorithms.field_export_algorithm import FieldExportAlgorithm
 from .algorithms.pdf_report_algorithm import PdfReportAlgorithm
+from .algorithms.provenance_algorithm import ProvenanceInspectAlgorithm
 from .algorithms.recipe_io_algorithm import RecipeExportAlgorithm, RecipeImportAlgorithm
 from .algorithms.csf_algorithm import CsfAlgorithm
 from .algorithms.pdal_classify_algorithm import PdalClassifyAlgorithm
@@ -72,6 +74,7 @@ class LidarReliefProvider(QgsProcessingProvider):
         self.addAlgorithm(SlopeAlgorithm())
         self.addAlgorithm(RuggednessAlgorithm())
         self.addAlgorithm(BatchAlgorithm())
+        self.addAlgorithm(ContactSheetAlgorithm())
         self.addAlgorithm(OpennessAlgorithm())
         self.addAlgorithm(MstpAlgorithm())
         self.addAlgorithm(BlendAlgorithm())
@@ -85,6 +88,7 @@ class LidarReliefProvider(QgsProcessingProvider):
         self.addAlgorithm(CogExportAlgorithm())
         self.addAlgorithm(FieldExportAlgorithm())
         self.addAlgorithm(PdfReportAlgorithm())
+        self.addAlgorithm(ProvenanceInspectAlgorithm())
         self.addAlgorithm(RecipeExportAlgorithm())
         self.addAlgorithm(RecipeImportAlgorithm())
         self.addAlgorithm(CsfAlgorithm())

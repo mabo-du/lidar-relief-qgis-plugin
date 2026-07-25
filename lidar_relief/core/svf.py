@@ -1,12 +1,28 @@
 """svf.py — Sky-View Factor (SVF) computation for terrain analysis.
-exports: sky_view_factor(dem, cellsize, num_directions, search_radius, noise_level) -> ndarray
+exports: sky_view_factor(dem, cellsize, num_directions, search_radius,
+                         noise_level, feedback, use_gpu) -> ndarray
+         _build_horizon_samples(num_directions, search_radius, scale) -> list
 used_by: algorithms/svf_algorithm.py → sky_view_factor
+         core/openness.py → _build_horizon_samples
+         core/vat.py, core/blend.py → sky_view_factor
+         gpu/compute_backend.py → _build_horizon_samples [cascade]
 rules:
   Pure NumPy — no QGIS imports.
+  _build_horizon_samples is the SINGLE source of horizon ray geometry.
+  Both the CPU loop below and the CuPy kernels in gpu/compute_backend.py
+  consume it; never re-derive directions in a second place.
+  The GPU import must stay inside the function body — gpu/compute_backend
+  imports back from here, so a module-level import would be circular.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Corrected the formula note (it claimed this file deviates from
+         Zakšek et al. 2011 — verified against rvt-py 2.x, which
+         computes `1 - mean(sin(horizon))`; that IS the published
+         formula and it is what this file already computed). Added the
+         opt-in use_gpu dispatch.
 """
 
 import numpy as np
-from .array_utils import _shift_array
+from .array_utils import _shift_array, horizon_sin
 
 
 def _build_horizon_samples(num_directions, search_radius, scale=3):
@@ -72,15 +88,52 @@ def sky_view_factor(
     search_radius: int = 10,
     noise_level: int = 0,
     feedback=None,
+    use_gpu: bool = False,
 ) -> np.ndarray:
     """Compute Sky-View Factor (SVF) for the input DEM.
 
     Note on the mathematical formula:
-    This function computes SVF using a linear approximation: 1.0 - mean(sin(horizon)).
-    The standard peer-reviewed formula (Zakšek et al., 2011) is defined as:
-    SVF = 1.0 - mean(sin²(horizon)). The linear version is used here for consistent,
-    backwards-compatible visual representation with legacy archaeological plugin outputs.
+    This function computes ``SVF = 1.0 - mean(sin(horizon))``, which is
+    the formula published in Zakšek, Oštir & Kokalj (2011), *Sky-View
+    Factor as a Relief Visualization Technique*, Remote Sensing 3(2),
+    398–415. It is also what the reference ``rvt-py`` implementation
+    computes (``rvt.vis.sky_view_factor_compute`` accumulates
+    ``1 - sin(max(max_slope, 0))`` and divides by the direction count),
+    so plugin output is directly comparable with any other RVT install.
+
+    A ``sin²`` weighting appears in some radiation-modelling literature,
+    where the sky fraction is cosine-weighted for irradiance rather than
+    measured as a solid-angle proportion. That is a different quantity
+    and is NOT the relief-visualisation SVF this algorithm implements.
+
+    Args:
+        dem: 2D float32 elevation array (nodata as np.nan).
+        cellsize: Pixel size in map units.
+        num_directions: Number of azimuth directions (8, 16, or 32).
+        search_radius: Maximum search distance in pixels.
+        noise_level: Look-ahead noise filter strength (0 disables it).
+        feedback: Optional QGIS feedback object for progress/cancellation.
+        use_gpu: Opt in to the CuPy backend. Falls back to this NumPy
+            implementation when CuPy/CUDA is unavailable or when
+            ``noise_level > 0``, so callers never have to branch.
+
+    Returns:
+        Float32 array of SVF values in [0, 1], nodata preserved as NaN.
     """
+    if use_gpu:
+        # Imported here, not at module scope: gpu.compute_backend imports
+        # _build_horizon_samples from this module.
+        from ..gpu.compute_backend import compute_svf_gpu
+
+        return compute_svf_gpu(
+            dem,
+            cellsize,
+            num_directions=num_directions,
+            search_radius=search_radius,
+            noise_level=noise_level,
+            feedback=feedback,
+        )
+
     rows, cols = dem.shape
 
     nan_mask = np.isnan(dem)
@@ -115,10 +168,7 @@ def sky_view_factor(
             shifted = _shift_array(dem_filled, row_shift, col_shift, dem_mean)
 
             delta_z = shifted - dem_filled
-            hypot_3d = np.hypot(delta_z, actual_dist)
-            # Avoid division by zero
-            hypot_3d = np.where(hypot_3d == 0, 1.0, hypot_3d)
-            sin_angle = delta_z / hypot_3d
+            sin_angle = horizon_sin(delta_z, actual_dist)
 
             if noise_level > 0:
                 is_tracking = countdown > 0

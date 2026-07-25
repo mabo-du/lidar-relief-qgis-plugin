@@ -9,23 +9,28 @@ rules:
 
 from qgis.core import (
     QgsProcessingAlgorithm,
+    QgsProcessingParameterEnum,
     QgsProcessingParameterRasterLayer,
     QgsProcessingParameterNumber,
     QgsProcessingParameterRasterDestination,
 )
 
 from ..core.raster_utils import (
+    get_cell_size_from_path,
     process_in_tiles,
 )
+from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..core.slrm import simple_local_relief_model
 from ..styling import ReliefLayerPostProcessor
+from .provenance_mixin import ProvenanceMixin
 
 
-class SlrmAlgorithm(QgsProcessingAlgorithm):
+class SlrmAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
     """Simple Local Relief Model — removes large-scale topography."""
 
     INPUT = "INPUT"
     RADIUS = "RADIUS"
+    RADIUS_UNITS = "RADIUS_UNITS"
     OUTPUT = "OUTPUT"
 
     # -- metadata -----------------------------------------------------------
@@ -66,11 +71,19 @@ class SlrmAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.RADIUS,
-                "Smoothing radius (pixels)",
-                type=QgsProcessingParameterNumber.Type.Integer,
+                "Smoothing radius",
+                type=QgsProcessingParameterNumber.Type.Double,
                 defaultValue=20,
-                minValue=2,
-                maxValue=500,
+                minValue=0.2,
+                maxValue=2000,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.RADIUS_UNITS,
+                "Smoothing radius units",
+                options=RADIUS_UNIT_OPTIONS,
+                defaultValue=0,  # index 0 → pixels, preserving old behaviour
             )
         )
         self.addParameter(
@@ -89,7 +102,18 @@ class SlrmAlgorithm(QgsProcessingAlgorithm):
             Abort gracefully on cancel.
         """
         source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
-        int_radius = self.parameterAsInt(parameters, self.RADIUS, context)
+        float_radius = self.parameterAsDouble(parameters, self.RADIUS, context)
+        int_units_index = self.parameterAsEnum(parameters, self.RADIUS_UNITS, context)
+        # SLRM's minimum useful radius is 2 px — a 1 px box filter would
+        # subtract the surface from itself and return a flat zero raster.
+        int_radius = resolve_radius(
+            float_radius,
+            RADIUS_UNIT_VALUES[int_units_index],
+            get_cell_size_from_path(source.source()),
+            "SLRM smoothing radius",
+            feedback,
+            minimum=2,
+        )
         output_path = self.parameterAsOutputLayer(parameters, self.OUTPUT, context)
 
         feedback.setProgressText("Computing Simple Local Relief Model in tiles...")
@@ -109,6 +133,17 @@ class SlrmAlgorithm(QgsProcessingAlgorithm):
 
         if feedback.isCanceled():
             return {}
+
+        self.record_provenance(
+            output_path,
+            parameters={
+                "trend_radius_pixels": int_radius,
+                "trend_radius_input": float_radius,
+                "radius_units": RADIUS_UNIT_VALUES[int_units_index],
+            },
+            source_path=source.source(),
+            feedback=feedback,
+        )
 
         if context.willLoadLayerOnCompletion(output_path):
             details = context.layerToLoadOnCompletionDetails(output_path)

@@ -15,14 +15,19 @@ ALGORITHM-LEVEL DIVERGENCES (known, documented, NOT bugs):
    tilted plane (sanity check) and that the divergence on a synthetic
    DEM is within the documented range.
 
-2. SVF / OPENNESS: Plugin's horizon ray-cast uses
-   `int(round(dr * dist))` to compute pixel shifts, which causes
-   multiple consecutive distances to round to the same pixel on
-   diagonal azimuths. This is a KNOWN BUG documented in the v2.0.6
-   review. The plugin's SVF is systematically higher than rvt-py's
-   on occluded terrain (less occlusion detected → higher SVF). The
-   test documents the current divergence level so any future fix
-   that changes it is detected and reviewed.
+2. SVF / OPENNESS: FIXED — this entry described a horizon-rounding
+   bug (`int(round(dr * dist))` collapsing consecutive distances onto
+   the same pixel on diagonal azimuths, so the plugin under-detected
+   occlusion and reported systematically high SVF). `core/svf.py`
+   now supersamples each ray at 3x integer resolution, deduplicates by
+   integer pixel, and uses the true Euclidean distance to each sample
+   — the same approach as rvt-py's `horizon_shift_vector`. Residual
+   divergence from rvt-py is edge handling only. The tolerances below
+   still pin the current agreement level so a regression is caught.
+
+   Note on the SVF formula itself: both this plugin and rvt-py compute
+   `1 - mean(sin(horizon))` (Zakšek et al. 2011). They agree by
+   construction; there is no formula-level divergence here.
 
 3. SLRM: Plugin has two code paths (scipy.ndimage.uniform_filter and
    a NumPy fallback). The scipy path uses mode="reflect" (scipy
@@ -159,7 +164,9 @@ class TestSlopeGolden:
         dem = synthetic_dem
         # Manual Horn's at pixel (50, 50)
         y, x = 50, 50
-        window = dem[y - 1:y + 2, x - 1:x + 2]
+        # Bounds in locals so the slice stays E203-clean after formatting.
+        y0, y1, x0, x1 = y - 1, y + 2, x - 1, x + 2
+        window = dem[y0:y1, x0:x1]
         dz_dx = (
             (window[0, 0] + 2 * window[1, 0] + window[2, 0])
             - (window[0, 2] + 2 * window[1, 2] + window[2, 2])

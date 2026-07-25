@@ -2,13 +2,13 @@
 name=LiDAR Relief Visualization
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
-description=A free, open-source QGIS toolkit with 29 Processing algorithms for archaeological LiDAR visualization and terrain analysis. Reveal subtle earthworks, prepare point clouds, compare surveys, combine LiDAR with satellite imagery, validate anomalies in the field, and produce reproducible research outputs.
+description=A free, open-source QGIS toolkit with 31 Processing algorithms for archaeological LiDAR visualization and terrain analysis. Reveal subtle earthworks, prepare point clouds, compare surveys, combine LiDAR with satellite imagery, validate anomalies in the field, and produce reproducible research outputs.
 version=2.0.22
 author=Mark Bouck
 email=markbouck@duck.com
 
 about=LiDAR Relief Visualization is a free and open-source archaeological terrain-analysis toolkit for QGIS and part of the Dig:Tools ecosystem.
-    Its 29 Processing algorithms help archaeologists, heritage professionals, and landscape researchers examine digital elevation models and LiDAR point clouds for subtle features such as ditches, banks, mounds, hollow ways, scarps, platforms, quarrying, and disturbed ground.
+    Its 31 Processing algorithms help archaeologists, heritage professionals, and landscape researchers examine digital elevation models and LiDAR point clouds for subtle features such as ditches, banks, mounds, hollow ways, scarps, platforms, quarrying, and disturbed ground.
     Core tools include multi-directional hillshade, SLRM, Sky-View Factor, anisotropic Sky-View Factor, positive and negative openness, Local Dominance, MSTP, e4MSTP, Terrain Ruggedness Index, slope, VAT, Simple Red Relief, PCA composites, visualization blending, and batch processing with landscape presets.
     Extended workflows support LAS/LAZ ground filtering, PDAL processing, multi-temporal DEM comparison, LiDAR and Sentinel-2 fusion, Cloud-Optimized GeoTIFF export, interactive web maps, QField survey packages, reproducible visualization recipes, PDF reporting, and optional ONNX-based feature detection.
     Core terrain tools work with libraries supplied by QGIS. Specialized capabilities use clearly identified optional packages and remain isolated, so missing optional dependencies do not prevent the plugin from loading.

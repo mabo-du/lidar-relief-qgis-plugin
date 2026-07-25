@@ -197,8 +197,14 @@ def rvt_openness(
         feedback: Optional QGIS feedback object for cancellation checks.
 
     Returns:
-        Float32 array of openness values in degrees. Positive mode returns
-        approximately [0, 90]; negative mode [-90, 0]. Shape matches input.
+        Float32 array of openness values in DEGREES, in the Yokoyama
+        [0, 180] range for both modes (flat terrain sits near 90). This
+        matches the native ``topographic_openness`` contract, so the two
+        implementations are interchangeable. Shape matches input.
+
+        Negative mode does NOT return negative numbers — it is positive
+        openness computed on an inverted DEM (rvt takes ``ve_factor``
+        negative), so concave features read HIGH rather than low.
     """
     if not has_rvt():
         raise RVTNotAvailable()

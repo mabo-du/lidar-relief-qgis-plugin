@@ -5,6 +5,183 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+**Added**
+
+- **Visualisation Contact Sheet.** A new algorithm renders several
+  visualisations of the same DEM as one labelled multi-panel PNG, so you can
+  see which technique reveals your features before committing to a
+  full-resolution run. The DEM is downsampled first, so a sheet returns in
+  seconds; eleven visualisations over a 300×300 preview take under half a
+  second. Panels are previews for *choosing* a technique — each is
+  contrast-stretched independently, so brightness is not comparable between
+  them.
+- **Search radii in metres.** Sky-View Factor, Topographic Openness, ASVF,
+  SLRM and RVT Openness now accept their radius in metres as well as pixels,
+  and every run reports the radius in both units. Archaeological features have
+  a real-world size, but a pixel radius does not: 20 px is 20 m on a 1 m DEM
+  and only 5 m on the 0.25 m LiDAR common in UK and NL archaeology. Pixels
+  remain the default so saved Processing models are unaffected.
+- **Semantic segmentation for AI Feature Detection.** U-Net, SegFormer and
+  DeepLab-style models now produce a class-index raster plus per-class polygons
+  carrying area, pixel count and mean confidence — better suited to archaeology
+  than bounding boxes, since ditches, banks and field systems are linear or
+  areal. Model type is detected from the output signature rather than a
+  substring in an output name.
+- **Provenance sidecars.** Terrain outputs are written with a
+  `<output>.lidar-relief.json` recording the plugin version, algorithm, the
+  parameters actually used (including the resolved pixel radius, not just the
+  metres typed), source path, source checksum, CRS and cell size. A new
+  **Inspect Provenance Record** algorithm reads one back and verifies the
+  source DEM is unchanged, so a result can be audited or regenerated later by
+  someone else. Writing a sidecar can never fail the run that produced the
+  raster.
+
+**Changed**
+
+- **Sky-View Factor, Openness and ASVF are about 2× faster.** `np.hypot`
+  accounted for 1.54 s of the 2.00 s spent on array arithmetic per 1024² tile;
+  it rescales operands to stay overflow-safe, which is pointless at DEM
+  magnitudes (float32 overflow needs |Δz| above ~1.8e19 m against a ~2e4 m
+  terrestrial range). Replaced with `sqrt(Δz² + d²)`, agreeing to float32
+  epsilon. SVF at 16 directions and radius 20 went from 2.30 s to 1.09 s.
+- **Tiled processing runs tiles concurrently.** Roughly 1.4–1.7× on large DEMs.
+  Deliberately only two workers by default: this workload is
+  memory-bandwidth bound, not CPU bound, and measurement showed four workers
+  can be *slower* than two on some shapes, with processes no better than
+  threads. Reads and writes stay on the calling thread because GDAL is not
+  thread-safe.
+- **Landscape presets scale with resolution.** Preset distances are now stored
+  in metres and converted using the DEM's cell size. They were stored in
+  pixels, so the "research-validated" presets were only valid on a 1 m DEM.
+  `get_preset(name)` with no cell size still returns the historical numbers.
+- **Local Dominance renders in degrees** rather than a hard-coded byte scale,
+  and is displayed with the standard deviation stretch used by the other
+  angular visualisations.
+
+**Fixed**
+
+- **Local Dominance produced an all-zero raster.** It returned
+  `arctan(...)` in radians — roughly 0.04–0.24 on real terrain — then
+  byte-scaled with `(v − 0.5) / (1.8 − 0.5) × 255`, limits that only make
+  sense for a degree-scale quantity. Every pixel fell below the 0.5 floor and
+  clipped to zero, so one of the advertised visualisations emitted a constant
+  raster for anything gentler than a cliff. Found by rendering the new contact
+  sheet, where its panel was blank while the other ten showed the test
+  earthworks. Its tests passed throughout because the only shaped fixture was
+  a 45° cone steep enough to survive the clipping.
+- **Tiled segmentation normalised each tile in isolation.** Per-tile min/max
+  scaling made the same terrain present differently depending on which tile it
+  landed in, and a uniform tile — flat ground, or the interior of a large
+  feature — scaled to all zeros regardless of its elevation. Segmentation now
+  scales every tile against raster-wide percentiles.
+- **GDAL error messages were unreachable.** Once `gdal.UseExceptions()` is
+  active — which QGIS sets, and which becomes the default in GDAL 4 —
+  `gdal.Open` raises instead of returning `None`, so code checking `if dataset
+  is None` never reached its own message about paths and permissions. Opening
+  now raises `ValueError` with the intended guidance under either error mode.
+
+- **CSF Ground Filter (LAS/LAZ → DEM) now works.** DEM generation failed on
+  every run with `TypeError: sequence must contain strings`: the interpolation
+  step passed `zfield` as a column index instead of the field *name* GDAL
+  requires, and handed `gdal.Grid` a plain `.xyz` text file, which OGR cannot
+  open as a vector datasource. Ground points are now exposed through a CSV +
+  OGR VRT wrapper with a named `z` field. No test covered this path, so the
+  failure survived from 2.0 to 2.0.22; `test_csf_dem_export.py` now guards it.
+- **CSF DEM interpolation no longer smears elevations across data gaps.**
+  Switched from unbounded `invdist` — which weights every input point for
+  every output cell — to `invdistnn` with a bounded search radius. Cells with
+  no ground point in range are written as nodata instead of being extrapolated,
+  and the output declares that nodata value so QGIS masks them.
+- **CSF DEM generation is bounded.** A small cell size over a wide extent
+  previously requested an arbitrarily large raster. Requests above 20 000 cells
+  per side now raise a clear error naming the cell size instead of exhausting
+  memory.
+- **GPU acceleration could not complete a single run.** `_shift_array_gpu`
+  computed the overlap between source and destination as `size` for a positive
+  shift and `size − 2×|shift|` for a negative one, instead of `size − |shift|`.
+  Every horizon step therefore raised `ValueError: could not broadcast input
+  array`, so the CuPy path failed immediately on real CUDA hardware. It now
+  mirrors `core.array_utils._shift_array` exactly.
+- **GPU acceleration produced different results from the CPU.** The CuPy
+  kernels derived directions with `round(cos θ)` / `round(sin θ)`, which
+  quantises every azimuth to one of eight integer directions — 16- and
+  32-direction requests silently collapsed to 8 — and stepped along whole-pixel
+  multiples instead of the supersampled ray the CPU walks. Both GPU kernels now
+  consume the same `_build_horizon_samples` geometry as the NumPy path. The
+  existing equivalence tests only run under CUDA, so this was invisible in CI;
+  `test_gpu_parity.py` asserts the shared-geometry contract on any machine.
+- **A broken CUDA install could stop the plugin loading.** `cupy.is_available()`
+  raises rather than returning `False` when the driver is missing or
+  mismatched, and the import guard only caught `ImportError`. Any probe failure
+  now falls back to NumPy with a logged warning.
+- **Tiled outputs always declare a nodata value.** When the source DEM carried
+  no nodata tag, `process_in_tiles` wrote raw NaN into an untagged float band;
+  QGIS folded those NaNs into layer statistics and the contrast stretch
+  collapsed. It now falls back to −9999, matching `write_array_to_raster`.
+- **Multi-temporal DoD export used a deprecated, no-op CRS call.** The CRS
+  block looped over `["crs", "transform"]` without using the loop variable and
+  called `rio.set_crs()`, which returns a copy and discards the result. Replaced
+  with `rio.write_crs(..., inplace=True)`, clearing the `FutureWarning` the test
+  suite emitted.
+
+**Added**
+
+- **GPU acceleration is now reachable from the interface.** The CuPy backend
+  shipped in 2.0 but nothing in the plugin ever called it, so the advertised
+  feature did not exist for users. Sky-View Factor and Topographic Openness
+  gained a *Use GPU acceleration* checkbox. It never fails a run: without CuPy,
+  with a broken driver, or when SVF noise removal is enabled (CPU-only), the
+  algorithm falls back to NumPy and logs the reason.
+- **DEM geometry validation.** Every tiled algorithm now warns before
+  processing when the input DEM uses a geographic (lat/lon) CRS — where cell
+  size is in degrees, making slope, SVF, openness and search radii
+  meaningless — has no CRS at all, or has non-square pixels, which biases every
+  distance-based result because a single averaged cell size is used.
+
+- **Last deprecated boolean accessor removed.** `ml_export_algorithm` still
+  called `parameterAsBool`; the 2.0.22 QGIS 4 / Qt6 pass had converted the
+  other call sites to `parameterAsBoolean`.
+
+**Repository**
+
+- **Removed the checked-in `published/` snapshot.** It was a copy of the whole
+  plugin frozen at v2.0.17, committed once by accident, five versions stale (it
+  predated TRI entirely), referenced by no build script or CI workflow, and
+  duplicating every symbol in the repository — it was even being swept into
+  unrelated `ruff format` commits. Released builds are on GitHub Releases and
+  every release is tagged. Added to `.gitignore` so it cannot return.
+- **Cleared release ZIPs from the working tree.** Twenty-two build artefacts
+  (~18 MB, untracked) that are all reproducible from a git tag or downloadable
+  from GitHub Releases. Pre-2.0 builds with neither a tag nor a release are the
+  only surviving copies of those versions and were kept in `_archive/`.
+
+**Testing**
+
+- **End-to-end LAS → CSF → DEM coverage.** `test_csf_integration.py` drives
+  `filter_las_file` — the function the Processing algorithm actually calls —
+  over a synthetic wooded site, asserting that the DEM is written, the CRS
+  comes from the LAS header rather than a default, canopy returns are removed,
+  and a 1.5 m mound survives filtering.
+- **`test.sh` reports what it cannot test.** It now installs `rvt-py`, `laspy`
+  and a `gdal` build pinned to `gdal-config --version`, then names any gating
+  dependency still missing. Previously an interpreter without GDAL or rvt-py
+  skipped seven modules and reported a green run.
+
+**Documentation**
+
+- **Corrected the Sky-View Factor formula note.** The docstring claimed the
+  implementation deviated from Zakšek et al. (2011) by using a linear
+  `1 − mean(sin(horizon))` instead of a `sin²` form. Verified against `rvt-py`
+  2.x: the published and reference formula *is* the linear one, and it is what
+  this plugin already computed. Output has always been comparable with other
+  RVT installations.
+- Removed the stale "known SVF horizon rounding bug" note from the golden
+  regression suite — that bug was fixed by the supersampled ray-cast.
+- Corrected the `rvt_openness` return-range documentation, which contradicted
+  itself ([0, 90] / [−90, 0] versus the actual Yokoyama [0, 180]).
+- Added the missing CodeDNA header to `core/ruggedness.py`, the only core
+  module without one.
+
 
 ## [2.0.22] - 2026-07-15
 

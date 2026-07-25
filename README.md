@@ -10,7 +10,7 @@
 [![Tests](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml/badge.svg)](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml)
 
 A QGIS Processing plugin for advanced archaeological terrain visualization from
-Digital Elevation Models (DEMs). Provides **29 algorithms** covering LiDAR
+Digital Elevation Models (DEMs). Provides **31 algorithms** covering LiDAR
 relief visualization, multi-temporal change detection, multi-sensor fusion,
 AI feature detection, point cloud ground filtering, and export/publishing —
 all within QGIS. Core terrain tools have no dependencies beyond QGIS's bundled
@@ -25,7 +25,10 @@ archaeological classification.*
 ## Quick start
 
 1. Install **LiDAR Relief Visualization** from QGIS Plugin Manager.
-2. Load a projected DEM whose horizontal and vertical units are metres.
+2. Load a projected DEM whose horizontal and vertical units are metres. If you
+   load a geographic (lat/lon) DEM, or one with non-square pixels, the plugin
+   warns you in the Processing log before it starts — cell sizes in degrees
+   make slope, SVF, openness, and every search radius meaningless.
 3. Open **Processing Toolbox → LiDAR Relief**.
 4. Start with **Batch Relief Visualisation** and the closest landscape preset,
    or run **Terrain Ruggedness Index (TRI)** for local elevation contrast.
@@ -74,6 +77,15 @@ the following terrain visualization algorithms:
   terrain presets).
 - **Terrain Ruggedness Index (TRI)**: Riley 3×3 local elevation contrast for
   mapping scarps, banks, rough ground, stone spreads, and quarrying.
+- **Visualisation Contact Sheet**: Renders several visualisations of the same
+  DEM as one labelled multi-panel image, so you can see which technique reveals
+  your features before committing to a full-resolution run. The DEM is
+  downsampled first, so a sheet returns in seconds.
+
+Search radii on Sky-View Factor, Openness, ASVF, SLRM and RVT Openness can be
+given in **metres** as well as pixels. Archaeological features have a
+real-world size, and a 20 px radius means 20 m on a 1 m DEM but only 5 m on
+0.25 m LiDAR — every run reports its radius in both units in the log.
 
 ### Export and publishing
 
@@ -87,6 +99,12 @@ the following terrain visualization algorithms:
   provenance, statistics, histogram, and certification.
 - **Visualization Recipes**: Share algorithm parameters as JSON files —
   community-driven preset sharing beyond the 4 built-in presets.
+- **Provenance Sidecars**: Every terrain output is written with a
+  `<output>.lidar-relief.json` recording the plugin version, algorithm, exact
+  parameters, source path, source checksum, CRS and cell size. The **Inspect
+  Provenance Record** algorithm reads one back and verifies the source DEM has
+  not changed since — so a result can be audited or regenerated months later,
+  by someone else.
 
 ### Point-cloud processing
 
@@ -107,16 +125,26 @@ the following terrain visualization algorithms:
 
 ### AI and machine learning
 
-- **AI Feature Detection**: Load your own ONNX models (YOLO, U-Net, etc.) and
-  run inference on plugin visualizations. Tiled processing, NMS, confidence
-  filtering, and GeoPackage export of detections. Plugin acts as inference
-  engine only — bring your own pre-trained model.
+- **AI Feature Detection**: Load your own ONNX models and run inference on
+  plugin visualizations. The model type is detected automatically from its
+  output signature. Plugin acts as inference engine only — bring your own
+  pre-trained model.
+  - *Object detection* (YOLOv5/v7/v8/v11, SSD) → bounding-box polygons, with
+    tiled processing, NMS and confidence filtering.
+  - *Semantic segmentation* (U-Net, SegFormer, DeepLab) → a class-index raster
+    plus per-class polygons carrying area, pixel count and mean confidence.
+    Usually the better fit for archaeology, where ditches, banks and field
+    systems are linear or areal rather than box-shaped.
 
 ### GPU acceleration
 
-- **CuPy Compute Backend**: Transparent GPU acceleration for computationally
-  intensive horizon-scanning algorithms (SVF, Openness). Automatic CUDA
-  detection with graceful NumPy fallback.
+- **CuPy Compute Backend**: Optional GPU acceleration for the horizon-scanning
+  algorithms. Tick **Use GPU acceleration** on **Sky-View Factor** or
+  **Topographic Openness**; the plugin detects CUDA automatically and falls
+  back to NumPy — logging why — when CuPy is absent, the driver is unusable, or
+  SVF noise removal is enabled (that filter is CPU-only). GPU and CPU walk the
+  same horizon rays, so results agree to float precision rather than being
+  merely similar.
 
 ## Installation
 
@@ -172,6 +200,28 @@ to the correct install command.
 - When reporting a problem, include the QGIS version, operating system, plugin
   version, input raster CRS/resolution, and the full Processing log at the
   [issue tracker](https://github.com/dig-tools/lidar-relief-qgis-plugin/issues).
+
+### Interpreter requirements for the test suite
+
+Several test modules begin with `pytest.importorskip(...)`, so an interpreter
+missing an optional package **skips those modules silently** and still reports
+a green run. `test_golden_regression.py` gates the entire rvt-py
+cross-validation suite this way, and seven modules depend on GDAL. A run
+reporting more than a handful of skips is an incomplete run, not a healthy one.
+
+`./test.sh` installs what it can and prints a warning naming anything that will
+be skipped. To set an interpreter up by hand:
+
+```bash
+pip install rvt-py laspy rio-cogeo reportlab xarray rioxarray \
+            onnxruntime rasterio cloth-simulation-filter
+# GDAL's Python bindings must match the system libgdal exactly:
+pip install "gdal==$(gdal-config --version)"
+```
+
+A fully equipped interpreter runs the suite with only CUDA- and PDAL-gated
+tests skipped. QGIS itself is not needed — `core/` is pure NumPy/GDAL, and CI
+runs the QGIS-dependent smoke test inside the official QGIS container.
 
 ### Runtime smoke test for developers
 

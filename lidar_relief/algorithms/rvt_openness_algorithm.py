@@ -20,8 +20,9 @@ from qgis.core import (
     QgsProcessingParameterRasterLayer,
 )
 
-from ..core.raster_utils import process_in_tiles
+from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
 from ..core.rvt_vis import has_rvt
+from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..styling import ReliefLayerPostProcessor
 
 
@@ -42,6 +43,7 @@ class RvtOpennessAlgorithm(QgsProcessingAlgorithm):
     OPENNESS_TYPE = "OPENNESS_TYPE"
     NUM_DIRECTIONS = "NUM_DIRECTIONS"
     SEARCH_RADIUS = "SEARCH_RADIUS"
+    RADIUS_UNITS = "RADIUS_UNITS"
     OUTPUT = "OUTPUT"
 
     # -- metadata -----------------------------------------------------------
@@ -98,11 +100,19 @@ class RvtOpennessAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.SEARCH_RADIUS,
-                "Search Radius (pixels)",
-                type=QgsProcessingParameterNumber.Type.Integer,
+                "Search Radius",
+                type=QgsProcessingParameterNumber.Type.Double,
                 defaultValue=20,
-                minValue=1,
-                maxValue=500,
+                minValue=0.1,
+                maxValue=1000,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.RADIUS_UNITS,
+                "Search radius units",
+                options=RADIUS_UNIT_OPTIONS,
+                defaultValue=0,  # index 0 → pixels, preserving old behaviour
             )
         )
         self.addParameter(
@@ -132,11 +142,24 @@ class RvtOpennessAlgorithm(QgsProcessingAlgorithm):
         source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
         type_idx = self.parameterAsEnum(parameters, self.OPENNESS_TYPE, context)
         dir_idx = self.parameterAsEnum(parameters, self.NUM_DIRECTIONS, context)
-        radius = self.parameterAsInt(parameters, self.SEARCH_RADIUS, context)
+        radius_value = self.parameterAsDouble(parameters, self.SEARCH_RADIUS, context)
+        units_idx = self.parameterAsEnum(parameters, self.RADIUS_UNITS, context)
         output_path = self.parameterAsOutputLayer(parameters, self.OUTPUT, context)
 
         is_negative = type_idx == 1
         num_dirs = [8, 16, 32][dir_idx]
+
+        # rvt_openness rejects a radius outside 1..500 px, so clamp here
+        # rather than letting a metres value blow past the contract.
+        radius = resolve_radius(
+            radius_value,
+            RADIUS_UNIT_VALUES[units_idx],
+            get_cell_size_from_path(source.source()),
+            "RVT openness search radius",
+            feedback,
+            minimum=1,
+            maximum=500,
+        )
 
         feedback.setProgressText(
             f"Computing RVT openness ({num_dirs} dirs, r={radius}, "

@@ -1,6 +1,14 @@
 """test_local_dominance.py — Tests for Local Dominance computation.
 exports: test_local_dominance_cone() and more
 used_by: pytest runner
+rules:
+  Assert against ARCHAEOLOGICALLY REALISTIC relief, not just a 45-degree
+  cone. Through v2.0.22 this algorithm emitted an all-zero raster for
+  anything gentler than a cliff — it returned radians but byte-scaled
+  with degree-scale limits, so every pixel clipped to 0. The tests here
+  all passed anyway, because the only shaped fixture was a cone steep
+  enough to survive the clipping. Any new test must use relief on the
+  scale of real earthworks (decimetres to a couple of metres).
 """
 
 import numpy as np
@@ -96,3 +104,75 @@ def test_local_dominance_shape_and_dtype():
     result = compute_local_dominance(dem, 1.0, min_rad=5, max_rad=10)
     assert result.shape == dem.shape
     assert result.dtype == np.float32
+
+
+def _barrow_dem(size=120):
+    """Gentle terrain with a 1.5 m barrow and a ring ditch around it.
+
+    Deliberately archaeological in scale: this is the relief the plugin
+    exists to reveal, and the magnitude at which the old byte-scaling
+    clipped everything to zero.
+    """
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    rng = np.random.default_rng(3)
+    dem = 50.0 + 0.01 * xx + rng.normal(0, 0.03, (size, size)).astype(np.float32)
+    radius = np.sqrt((yy - size / 3) ** 2 + (xx - size / 3) ** 2)
+    dem += np.where(radius < 15, 1.5 * np.cos(radius / 15 * np.pi / 2), 0.0)
+    dem -= np.where((radius > 18) & (radius < 24), 0.8, 0.0)
+    return dem.astype(np.float32)
+
+
+def test_realistic_relief_is_not_constant():
+    """Regression: gentle terrain used to produce an all-zero raster.
+
+    The byte scale was (v - 0.5) / (1.8 - 0.5) * 255 applied to a value
+    in RADIANS. Real terrain yields roughly 0.04-0.24 rad, so every
+    pixel fell below the 0.5 floor and clipped to zero.
+    """
+    result = compute_local_dominance(_barrow_dem(), 1.0, min_rad=5, max_rad=15)
+
+    finite = result[np.isfinite(result)]
+    assert finite.size > 0
+    assert finite.min() != finite.max(), (
+        "Local Dominance returned a constant raster on realistic relief"
+    )
+    assert finite.std() > 0.05, (
+        f"variation is implausibly small (std={finite.std():.4f} deg) — "
+        f"the output is nearly flat"
+    )
+
+
+def test_output_is_in_plausible_degree_range():
+    """Values must read as degrees, not radians and not a 0-255 byte scale."""
+    result = compute_local_dominance(_barrow_dem(), 1.0, min_rad=5, max_rad=15)
+    finite = result[np.isfinite(result)]
+
+    assert np.abs(finite).max() < 90.0, "a mean depression angle cannot exceed 90 deg"
+    # Radians on this fixture would sit under ~0.3; degrees are ~10x that.
+    assert np.abs(finite).max() > 0.5, (
+        f"peak magnitude {np.abs(finite).max():.3f} looks like radians, not degrees"
+    )
+
+
+def test_barrow_is_more_dominant_than_its_ditch():
+    """The archaeological signal: a mound dominates, a ditch does not."""
+    size = 120
+    result = compute_local_dominance(_barrow_dem(size), 1.0, min_rad=5, max_rad=15)
+
+    centre = size // 3
+    summit = result[centre, centre]
+    ditch = result[centre, centre + 21]  # inside the ring ditch
+
+    assert np.isfinite(summit) and np.isfinite(ditch)
+    assert summit > ditch, (
+        f"barrow summit ({summit:.3f} deg) should dominate more than the "
+        f"ring ditch ({ditch:.3f} deg)"
+    )
+
+
+def test_nodata_stays_nodata():
+    """NaN input cells must remain NaN, not become a real angle."""
+    dem = _barrow_dem(60)
+    dem[10:15, 10:15] = np.nan
+    result = compute_local_dominance(dem, 1.0, min_rad=5, max_rad=10)
+    assert np.isnan(result[10:15, 10:15]).all()

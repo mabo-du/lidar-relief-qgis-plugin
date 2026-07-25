@@ -11,6 +11,18 @@ rules:
   Uses cloth-simulation-filter (CSF) C++ library via Python bindings.
   Provides archaeology-specific presets that preserve micro-relief.
   Pure Python dependency — no GDAL needed for the filter itself.
+  _points_to_dem MUST feed gdal.Grid an OGR *vector* source (CSV+VRT).
+  A bare .xyz text file is not an OGR datasource and will fail to open.
+  gdal.GridOptions(zfield=...) takes a field NAME (str), never an index.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Fixed _points_to_dem: it raised TypeError on every call
+         (zfield=2 int) and fed gdal.Grid an unreadable .xyz file, so
+         CsfAlgorithm failed 100% of the time. Now CSV+OGRVRT with
+         zfield="z", invdistnn (bounded radius) instead of unbounded
+         invdist, explicit nodata, and a grid-size cap.
+         message: "no test covered filter_las_file/_points_to_dem —
+         added test_csf_dem_export.py; the whole LAS->DEM path was
+         unexercised, which is how this survived to v2.0.22"
 """
 
 import logging
@@ -36,8 +48,9 @@ import sys
 if "pytest" in sys.modules or "unittest" in sys.modules:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
 
-import os
+import shutil
 import tempfile
+import xml.sax.saxutils
 from typing import Optional
 
 import numpy as np
@@ -419,16 +432,65 @@ def _crs_from_pdal_metadata(metadata) -> Optional[str]:
     return None
 
 
+# Upper bound on the output grid dimension. A 0.1 m cell size over a
+# 10 km LiDAR tile would otherwise request a 100 000 x 100 000 raster
+# (40 GB at float32) and take the whole QGIS session down with it.
+MAX_DEM_DIMENSION = 20000
+
+# Nodata written into cells the IDW search radius could not reach.
+DEM_NODATA = -9999.0
+
+
+def _write_points_vrt(xyz: np.ndarray, workdir: str) -> str:
+    """Write points as CSV + OGR VRT and return the VRT path.
+
+    ``gdal.Grid`` needs an **OGR vector** datasource. A bare ``.xyz``
+    text file is not one — OGR reports "not recognized as being in a
+    supported file format" — so the points are written as CSV and
+    exposed as point geometry through an OGRVRT wrapper, which is the
+    input form documented for ``gdal_grid``.
+
+    Rules:
+        The ``z`` column name written here MUST match the ``zfield``
+        passed to ``gdal.GridOptions`` — ``zfield`` is a field *name*,
+        never a column index.
+    """
+    csv_path = os.path.join(workdir, "ground_points.csv")
+    vrt_path = os.path.join(workdir, "ground_points.vrt")
+
+    with open(csv_path, "w", encoding="utf-8") as handle:
+        handle.write("x,y,z\n")
+        np.savetxt(handle, xyz[:, :3], fmt="%.4f", delimiter=",")
+
+    # The CSV path is interpolated into XML; escape it so unusual
+    # characters in a temp path cannot produce malformed VRT.
+    escaped_csv = xml.sax.saxutils.escape(csv_path)
+    with open(vrt_path, "w", encoding="utf-8") as handle:
+        handle.write(
+            "<OGRVRTDataSource>\n"
+            '  <OGRVRTLayer name="ground_points">\n'
+            f"    <SrcDataSource>{escaped_csv}</SrcDataSource>\n"
+            "    <GeometryType>wkbPoint</GeometryType>\n"
+            '    <GeometryField encoding="PointFromColumns"'
+            ' x="x" y="y" z="z"/>\n'
+            "  </OGRVRTLayer>\n"
+            "</OGRVRTDataSource>\n"
+        )
+    return vrt_path
+
+
 def _points_to_dem(
     xyz: np.ndarray,
     output_path: str,
     cellsize: float = 1.0,
     crs: Optional[str] = None,
+    search_radius: Optional[float] = None,
     feedback=None,
 ) -> str:
     """Rasterize XYZ ground points to a DEM GeoTIFF.
 
-    Uses GDAL's grid API for inverse-distance weighting interpolation.
+    Uses GDAL's grid API with nearest-neighbour-limited inverse distance
+    weighting (``invdistnn``).
 
     Args:
         xyz: (N, 3) float64 NumPy array (X, Y, Z).
@@ -441,10 +503,26 @@ def _points_to_dem(
             to ``'EPSG:4326'`` which silently tagged every output DEM
             as WGS84 (the v2.0.4 changelog claimed this was fixed, but
             the default argument remained EPSG:4326).
+        search_radius: IDW search radius in map units. Defaults to
+            ``5 * cellsize``. Cells with no ground point inside this
+            radius are written as nodata rather than being extrapolated.
         feedback: Optional progress callback.
 
     Returns:
         Path to the output DEM.
+
+    Raises:
+        ValueError: If no CRS is supplied, the point array is empty, or
+            the requested grid exceeds ``MAX_DEM_DIMENSION``.
+        RuntimeError: If GDAL is unavailable or gridding fails.
+
+    Rules:
+        ``zfield`` is a field NAME and must be a string. Passing the
+        column index (``zfield=2``) raises
+        ``TypeError: sequence must contain strings`` inside
+        ``gdal.GridOptions`` before gridding even starts.
+        ``gdal.Grid`` needs an OGR vector source — see
+        :func:`_write_points_vrt`.
     """
     try:
         from osgeo import gdal
@@ -461,43 +539,75 @@ def _points_to_dem(
             "system — it would be silently misaligned with other data."
         )
 
+    if cellsize <= 0:
+        raise ValueError(f"cellsize must be positive, got {cellsize}")
+
+    xyz = np.asarray(xyz, dtype=np.float64)
+    if xyz.ndim != 2 or xyz.shape[1] < 3:
+        raise ValueError(f"Expected (N, 3) point array, got shape {xyz.shape}")
+    if len(xyz) == 0:
+        raise ValueError("Cannot build a DEM from an empty point array.")
+
     if feedback:
         feedback.setProgressText("Generating DEM from ground points...")
 
-    # Write points to temporary XYZ file for GDAL grid
-    tmp_xyz_fd, tmp_xyz_path = tempfile.mkstemp(suffix=".xyz")
-    os.close(tmp_xyz_fd)
+    # Compute extent, padded by half a cell so edge points fall inside
+    # the first/last cell rather than exactly on the boundary.
+    x_min, x_max = float(xyz[:, 0].min()), float(xyz[:, 0].max())
+    y_min, y_max = float(xyz[:, 1].min()), float(xyz[:, 1].max())
+    x_min -= cellsize / 2
+    x_max += cellsize / 2
+    y_min -= cellsize / 2
+    y_max += cellsize / 2
+
+    cols = int((x_max - x_min) / cellsize) + 1
+    rows = int((y_max - y_min) / cellsize) + 1
+    if cols > MAX_DEM_DIMENSION or rows > MAX_DEM_DIMENSION:
+        raise ValueError(
+            f"Requested DEM would be {cols} x {rows} cells, which exceeds the "
+            f"{MAX_DEM_DIMENSION}-cell limit. Increase the cell size (currently "
+            f"{cellsize}) or clip the point cloud to a smaller area."
+        )
+
+    if search_radius is None:
+        search_radius = 5.0 * cellsize
+
+    workdir = tempfile.mkdtemp(prefix="lidar_relief_csf_")
     try:
-        np.savetxt(tmp_xyz_path, xyz, fmt="%.3f %.3f %.3f")
+        vrt_path = _write_points_vrt(xyz, workdir)
 
-        # Compute extent
-        x_min, x_max = xyz[:, 0].min(), xyz[:, 0].max()
-        y_min, y_max = xyz[:, 1].min(), xyz[:, 1].max()
-
-        # Add half-cell padding
-        x_min -= cellsize / 2
-        x_max += cellsize / 2
-        y_min -= cellsize / 2
-        y_max += cellsize / 2
-
-        cols = int((x_max - x_min) / cellsize) + 1
-        rows = int((y_max - y_min) / cellsize) + 1
-
-        # Use GDAL grid with IDW interpolation
+        # invdistnn limits each cell's IDW to the nearest points inside
+        # `radius`. Plain `invdist` has no radius and therefore weights
+        # EVERY input point for EVERY output cell — that both smears
+        # elevations across data gaps and scales as O(points x cells).
         grid_options = gdal.GridOptions(
             format="GTiff",
             width=cols,
             height=rows,
             outputBounds=(x_min, y_min, x_max, y_max),
             outputSRS=crs,
-            algorithm="invdist:power=2:smoothing=1.0",
-            zfield=2,
+            outputType=gdal.GDT_Float32,
+            # zfield must be the CSV column NAME, not an index.
+            zfield="z",
+            algorithm=(
+                f"invdistnn:power=2:smoothing=1.0:radius={search_radius}"
+                f":max_points=12:min_points=1:nodata={DEM_NODATA}"
+            ),
+            creationOptions=["COMPRESS=LZW", "TILED=YES"],
         )
 
-        gdal.Grid(output_path, tmp_xyz_path, options=grid_options)
-
+        result = gdal.Grid(output_path, vrt_path, options=grid_options)
+        if result is None:
+            raise RuntimeError(
+                f"gdal.Grid produced no output for {output_path}. Check that "
+                f"the ground points span a non-degenerate extent."
+            )
+        # Tag the nodata value so QGIS masks unreached cells instead of
+        # stretching the colour ramp down to -9999.
+        result.GetRasterBand(1).SetNoDataValue(DEM_NODATA)
+        result.FlushCache()
+        result = None
     finally:
-        if os.path.exists(tmp_xyz_path):
-            os.unlink(tmp_xyz_path)
+        shutil.rmtree(workdir, ignore_errors=True)
 
     return output_path

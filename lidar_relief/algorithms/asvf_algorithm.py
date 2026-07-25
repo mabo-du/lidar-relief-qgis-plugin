@@ -14,8 +14,9 @@ from qgis.core import (
     QgsProcessingParameterRasterDestination,
 )
 
-from ..core.raster_utils import process_in_tiles
+from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
 from ..core.asvf import anisotropic_sky_view_factor
+from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..styling import ReliefLayerPostProcessor
 
 
@@ -25,6 +26,7 @@ class AsvfAlgorithm(QgsProcessingAlgorithm):
     INPUT = "INPUT"
     DIRECTIONS = "DIRECTIONS"
     RADIUS = "RADIUS"
+    RADIUS_UNITS = "RADIUS_UNITS"
     ANISOTROPY_DIR = "ANISOTROPY_DIR"
     ANISOTROPY_WEIGHT = "ANISOTROPY_WEIGHT"
     NOISE = "NOISE"
@@ -72,11 +74,19 @@ class AsvfAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterNumber(
                 self.RADIUS,
-                "Search radius (pixels)",
-                type=QgsProcessingParameterNumber.Type.Integer,
+                "Search radius",
+                type=QgsProcessingParameterNumber.Type.Double,
                 defaultValue=10,
-                minValue=1,
-                maxValue=100,
+                minValue=0.1,
+                maxValue=1000,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.RADIUS_UNITS,
+                "Search radius units",
+                options=RADIUS_UNIT_OPTIONS,
+                defaultValue=0,  # index 0 → pixels, preserving old behaviour
             )
         )
         self.addParameter(
@@ -117,7 +127,15 @@ class AsvfAlgorithm(QgsProcessingAlgorithm):
     def processAlgorithm(self, parameters, context, feedback):
         source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
         int_directions = self.parameterAsInt(parameters, self.DIRECTIONS, context)
-        int_radius = self.parameterAsInt(parameters, self.RADIUS, context)
+        float_radius = self.parameterAsDouble(parameters, self.RADIUS, context)
+        int_units_index = self.parameterAsEnum(parameters, self.RADIUS_UNITS, context)
+        int_radius = resolve_radius(
+            float_radius,
+            RADIUS_UNIT_VALUES[int_units_index],
+            get_cell_size_from_path(source.source()),
+            "ASVF search radius",
+            feedback,
+        )
         float_dir = self.parameterAsDouble(parameters, self.ANISOTROPY_DIR, context)
         float_weight = self.parameterAsDouble(
             parameters, self.ANISOTROPY_WEIGHT, context

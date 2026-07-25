@@ -35,18 +35,23 @@ try:
 except ImportError:
     _ONNX_AVAILABLE = False
 
-# Supported model types and their expected output formats
-# NOTE (v2.0.4): semantic_segmentation is detected but NOT supported yet.
-# The postprocessor is not implemented — full implementation is planned
-# for v2.1. Loading a segmentation model returns zero detections and
-# emits a clear warning.
+# Supported model types and their expected output formats.
 SUPPORTED_MODEL_TYPES = {
     "object_detection": {
         "description": "Bounding box detection (YOLO, SSD, etc.)",
         "expected_outputs": ["num_dets", "det_boxes", "det_scores", "det_classes"],
         "postprocess": "yolo",
     },
+    "semantic_segmentation": {
+        "description": "Per-pixel class map (U-Net, SegFormer, DeepLab, etc.)",
+        "expected_outputs": ["logits (N, C, H, W) or (N, 1, H, W)"],
+        "postprocess": "segmentation",
+    },
 }
+
+# Class index treated as "not a feature" in a segmentation label map.
+# Near-universal convention for segmentation training sets.
+SEGMENTATION_BACKGROUND_CLASS = 0
 
 
 def onnx_available() -> bool:
@@ -64,6 +69,43 @@ def check_dependencies() -> None:
             "For faster CPU inference with Intel CPUs:\n"
             "  pip install onnxruntime-openvino"
         )
+
+
+def detect_model_type(output_names, output_shapes=None) -> str:
+    """Infer whether an ONNX model detects boxes or segments pixels.
+
+    Args:
+        output_names: Output tensor names from the session.
+        output_shapes: Matching shapes, where known. Entries may contain
+            strings for dynamic dimensions.
+
+    Returns:
+        ``'semantic_segmentation'`` or ``'object_detection'``.
+
+    Rules:
+        Shape is the reliable signal; names are only a hint. A
+        segmentation head emits ONE 4-D tensor (N, C, H, W) whose last
+        two dims are the spatial grid. A detector emits either several
+        tensors or a single 3-D (N, boxes, attrs) tensor.
+        The previous version only looked for the substring 'label_map'
+        in an output name, so ordinary U-Net exports — whose output is
+        usually just called 'output' — were misread as detectors, run
+        through the YOLO postprocessor, and silently produced nothing.
+    """
+    for name in output_names:
+        lowered = name.lower()
+        if "label_map" in lowered or "segmentation" in lowered:
+            return "semantic_segmentation"
+
+    if output_shapes and len(output_shapes) == 1:
+        shape = output_shapes[0]
+        if shape is not None and len(shape) == 4:
+            # (N, C, H, W): the trailing dims are a pixel grid. Dynamic
+            # axes come through as strings, which is itself typical of a
+            # segmentation export with variable input size.
+            return "semantic_segmentation"
+
+    return "object_detection"
 
 
 def load_model(
@@ -136,22 +178,16 @@ def load_model(
     input_name = input_info.name
     input_shape = input_info.shape  # (N, C, H, W)
 
-    output_names = [o.name for o in session.get_outputs()]
+    outputs = session.get_outputs()
+    output_names = [o.name for o in outputs]
+    output_shapes = [getattr(o, "shape", None) for o in outputs]
 
-    # Detect model type from output signature
-    model_type = "object_detection"  # Default
-    for o_name in output_names:
-        if "label_map" in o_name:
-            model_type = "semantic_segmentation"
-            break
+    model_type = detect_model_type(output_names, output_shapes)
 
-    # Warn immediately if the model is a type we can't postprocess yet
-    if model_type not in SUPPORTED_MODEL_TYPES:
+    if model_type not in SUPPORTED_MODEL_TYPES:  # pragma: no cover - defensive
         logger.warning(
-            "Model '%s' was detected as '%s', but only object detection "
-            "is currently supported (v2.0.4). Inference will run but "
-            "results will be empty. Semantic segmentation postprocessing "
-            "is planned for v2.1.",
+            "Model '%s' was detected as '%s', which has no postprocessor. "
+            "Inference will run but results will be empty.",
             os.path.basename(model_path),
             model_type,
         )
@@ -177,15 +213,29 @@ def load_model(
 def preprocess_tile(
     tile: np.ndarray,
     input_size: tuple[int, int],
+    norm_range: Optional[tuple] = None,
 ) -> np.ndarray:
     """Preprocess a raster tile for model inference.
 
     Args:
         tile: 2D (H, W) or 3D (H, W, C) numpy array.
         input_size: Model input size (height, width).
+        norm_range: Optional ``(low, high)`` used to scale floating-point
+            input to [0, 1]. When ``None`` each tile is scaled by its own
+            min and max.
 
     Returns:
         Preprocessed array of shape (1, C, H, W) as float32.
+
+    Rules:
+        Pass an explicit ``norm_range`` for any job that stitches tiles
+        back together. Per-tile min/max scaling makes the SAME terrain
+        present differently depending on which tile it landed in, and a
+        uniform tile — flat ground, or a solid patch of a large feature —
+        normalises to all zeros regardless of its actual elevation. That
+        is tolerable for independent bounding boxes but it wrecks a
+        segmentation mosaic, so segment_raster computes raster-wide
+        percentiles once and passes them in.
     """
     # Handle single-band → 3-channel by stacking
     if tile.ndim == 2:
@@ -217,17 +267,23 @@ def preprocess_tile(
     if np.issubdtype(tile_resized.dtype, np.integer):
         tile_float /= 255.0
     else:
-        # Per-tile min-max normalisation for floating-point rasters so
-        # the model always receives a [0,1] input regardless of the
-        # source algorithm. NaNs are preserved.
-        finite = tile_float[np.isfinite(tile_float)]
-        if finite.size > 0:
-            t_min = finite.min()
-            t_max = finite.max()
-            if t_max - t_min > 1e-6:
-                tile_float = (tile_float - t_min) / (t_max - t_min)
+        if norm_range is not None:
+            t_min, t_max = float(norm_range[0]), float(norm_range[1])
+        else:
+            # Per-tile min-max fallback. See the rules above for why this
+            # is unsuitable when tiles are stitched back together.
+            finite = tile_float[np.isfinite(tile_float)]
+            if finite.size > 0:
+                t_min = float(finite.min())
+                t_max = float(finite.max())
             else:
-                tile_float = np.zeros_like(tile_float)
+                t_min = t_max = 0.0
+
+        if t_max - t_min > 1e-6:
+            tile_float = (tile_float - t_min) / (t_max - t_min)
+            tile_float = np.clip(tile_float, 0.0, 1.0)
+        else:
+            tile_float = np.zeros_like(tile_float)
         tile_float = np.nan_to_num(tile_float, nan=0.0, posinf=1.0, neginf=0.0)
 
     # Convert to (C, H, W) format and add batch dimension
@@ -277,6 +333,299 @@ def _bilinear_resize(tile: np.ndarray, target_size: tuple[int, int]) -> np.ndarr
     bot = tile_10 * (1 - wx)[..., np.newaxis] + tile_11 * wx[..., np.newaxis]
     out = top * (1 - wy)[..., np.newaxis] + bot * wy[..., np.newaxis]
     return out.astype(tile.dtype, copy=False)
+
+
+def _nearest_resize_labels(labels: np.ndarray, target_size: tuple) -> np.ndarray:
+    """Resize a label map with nearest-neighbour sampling.
+
+    Rules:
+        Label maps must NEVER be interpolated. Averaging class index 1
+        and class index 3 yields 2, inventing a class that the model
+        never predicted at that pixel.
+    """
+    out_h, out_w = target_size
+    src_h, src_w = labels.shape[:2]
+    if (src_h, src_w) == (out_h, out_w):
+        return labels
+
+    rows = np.clip(
+        ((np.arange(out_h) + 0.5) * src_h / out_h).astype(np.int32), 0, src_h - 1
+    )
+    cols = np.clip(
+        ((np.arange(out_w) + 0.5) * src_w / out_w).astype(np.int32), 0, src_w - 1
+    )
+    return labels[rows[:, None], cols[None, :]]
+
+
+def _softmax(logits: np.ndarray, axis: int = 0) -> np.ndarray:
+    """Numerically stable softmax."""
+    shifted = logits - np.max(logits, axis=axis, keepdims=True)
+    exp = np.exp(shifted)
+    return exp / np.sum(exp, axis=axis, keepdims=True)
+
+
+def postprocess_segmentation(
+    outputs: list,
+    confidence_threshold: float,
+    tile_shape: tuple,
+) -> tuple:
+    """Turn a segmentation head's logits into a label map for one tile.
+
+    Handles the two shapes archaeological segmentation models actually
+    ship in: multi-class ``(1, C, H, W)`` logits, and single-channel
+    ``(1, 1, H, W)`` binary logits.
+
+    Args:
+        outputs: Raw ONNX outputs; the first is used.
+        confidence_threshold: Pixels whose winning class scores below
+            this become background.
+        tile_shape: ``(rows, cols)`` of the source tile, so the label map
+            comes back on the raster's grid rather than the model's.
+
+    Returns:
+        ``(labels, confidence)`` — uint8 class indices and float32 scores,
+        both shaped ``tile_shape``.
+
+    Raises:
+        ValueError: If the output is not a 4-D tensor.
+    """
+    logits = np.asarray(outputs[0])
+    if logits.ndim != 4:
+        raise ValueError(
+            f"Expected a 4-D (N, C, H, W) segmentation output, got shape "
+            f"{logits.shape}. This model does not look like a segmentation "
+            f"head."
+        )
+
+    logits = logits[0]  # drop batch → (C, H, W)
+    channels = logits.shape[0]
+
+    if channels == 1:
+        # Binary head: one logit per pixel, sigmoid to a probability.
+        probability = 1.0 / (1.0 + np.exp(-logits[0]))
+        labels = (probability >= confidence_threshold).astype(np.uint8)
+        # Confidence in the CHOSEN class, so background is reported with
+        # its own certainty rather than the foreground probability.
+        confidence = np.where(labels == 1, probability, 1.0 - probability)
+    else:
+        probabilities = _softmax(logits, axis=0)
+        labels = np.argmax(probabilities, axis=0).astype(np.uint8)
+        confidence = np.max(probabilities, axis=0)
+        # Low-confidence wins fall back to background rather than
+        # asserting a class the model was unsure about.
+        labels = np.where(
+            confidence >= confidence_threshold, labels, SEGMENTATION_BACKGROUND_CLASS
+        ).astype(np.uint8)
+
+    labels = _nearest_resize_labels(labels, tile_shape)
+    confidence = _nearest_resize_labels(
+        confidence.astype(np.float32), tile_shape
+    ).astype(np.float32)
+
+    return labels, confidence
+
+
+def _global_norm_range(dataset, sample_max: int = 1024):
+    """Compute a raster-wide (low, high) scaling range from a decimated read.
+
+    Uses the 2nd and 98th percentiles of a subsampled read rather than
+    band statistics, so the range is robust to a handful of spike cells
+    and cheap even on a very large raster.
+
+    Returns:
+        ``(low, high)``, or ``None`` if the raster has no usable values
+        (the caller then falls back to per-tile scaling).
+    """
+    band = dataset.GetRasterBand(1)
+    x_size = dataset.RasterXSize
+    y_size = dataset.RasterYSize
+    scale = max(1.0, max(x_size, y_size) / float(sample_max))
+    out_x = max(1, int(x_size / scale))
+    out_y = max(1, int(y_size / scale))
+
+    try:
+        sample = band.ReadAsArray(
+            0, 0, x_size, y_size, buf_xsize=out_x, buf_ysize=out_y
+        )
+    except Exception:  # pragma: no cover - unreadable raster
+        return None
+    if sample is None:
+        return None
+
+    sample = np.asarray(sample, dtype=np.float32)
+    if sample.ndim == 3:
+        sample = sample[0]
+
+    nodata = band.GetNoDataValue()
+    finite = np.isfinite(sample)
+    if nodata is not None:
+        finite &= ~np.isclose(sample, nodata, atol=1e-5, rtol=0.0)
+    values = sample[finite]
+    if values.size == 0:
+        return None
+
+    low, high = np.percentile(values, [2, 98])
+    if high - low <= 1e-6:
+        low, high = float(values.min()), float(values.max())
+    if high - low <= 1e-6:
+        return None
+    return float(low), float(high)
+
+
+def segment_raster(
+    raster_path: str,
+    model: dict,
+    confidence_threshold: float = 0.5,
+    tile_size: int = 512,
+    overlap: int = 64,
+    feedback=None,
+) -> dict:
+    """Run semantic segmentation over a raster, tile by tile.
+
+    Args:
+        raster_path: Raster to segment.
+        model: Model dict from :func:`load_model`.
+        confidence_threshold: Minimum winning-class score to keep.
+        tile_size: Tile size in pixels.
+        overlap: Overlap between tiles. Half of it is trimmed from each
+            interior edge before compositing.
+        feedback: Optional progress callback.
+
+    Returns:
+        dict with ``labels`` (uint8 H x W), ``confidence`` (float32),
+        ``geo_transform``, ``projection``, ``class_counts``, ``labels_present``
+        and ``cancelled``.
+
+    Rules:
+        Interior tile edges are trimmed by half the overlap before being
+        written into the mosaic. A segmentation head is least reliable at
+        its receptive-field boundary, so keeping the full tile would
+        stitch the worst pixels straight into the seam.
+    """
+    check_dependencies()
+
+    try:
+        from osgeo import gdal
+    except ImportError:
+        raise RuntimeError("GDAL is required for raster I/O.")
+
+    session = model["session"]
+    input_name = model["input_name"]
+    input_shape = model["input_shape"]
+    output_names = model["output_names"]
+
+    if len(input_shape) >= 2:
+        model_h, model_w = input_shape[-2], input_shape[-1]
+    else:  # pragma: no cover - malformed export
+        model_h = model_w = None
+    if isinstance(model_h, int) and isinstance(model_w, int):
+        model_input_size = (model_h, model_w)
+    else:
+        model_input_size = (tile_size, tile_size)
+
+    ds = gdal.Open(raster_path, gdal.GA_ReadOnly)
+    if ds is None:
+        raise RuntimeError(f"Cannot open raster: {raster_path}")
+
+    raster_x = ds.RasterXSize
+    raster_y = ds.RasterYSize
+    geo_transform = ds.GetGeoTransform()
+    projection = ds.GetProjection()
+
+    # One raster-wide normalisation range for every tile, so the mosaic
+    # is coherent. Percentiles rather than min/max so a single spike
+    # cannot compress the terrain into a narrow band.
+    norm_range = _global_norm_range(ds)
+    if norm_range is not None:
+        logger.info(
+            "Normalising all tiles against raster range %.4f..%.4f",
+            norm_range[0],
+            norm_range[1],
+        )
+
+    labels = np.zeros((raster_y, raster_x), dtype=np.uint8)
+    confidence = np.zeros((raster_y, raster_x), dtype=np.float32)
+
+    stride = max(1, tile_size - overlap)
+    trim = overlap // 2
+    n_tiles_x = max(1, (raster_x - overlap + stride - 1) // stride)
+    n_tiles_y = max(1, (raster_y - overlap + stride - 1) // stride)
+    total_tiles = n_tiles_x * n_tiles_y
+    tiles_processed = 0
+    cancelled = False
+
+    for ty in range(n_tiles_y):
+        for tx in range(n_tiles_x):
+            if feedback and feedback.isCanceled():
+                cancelled = True
+                break
+
+            x_off = tx * stride
+            y_off = ty * stride
+            x_size = min(tile_size, raster_x - x_off)
+            y_size = min(tile_size, raster_y - y_off)
+            if x_size <= 0 or y_size <= 0:
+                continue
+
+            tile_data = ds.ReadAsArray(x_off, y_off, x_size, y_size)
+            if tile_data is None:  # pragma: no cover - unreadable block
+                continue
+
+            if tile_data.ndim == 3:
+                tile_array = np.transpose(tile_data, (1, 2, 0))
+            else:
+                tile_array = tile_data
+
+            input_tensor = preprocess_tile(
+                tile_array, model_input_size, norm_range=norm_range
+            )
+            raw = session.run(output_names, {input_name: input_tensor})
+            tile_labels, tile_conf = postprocess_segmentation(
+                raw, confidence_threshold, tile_array.shape[:2]
+            )
+
+            # Trim half the overlap from interior edges only — the raster
+            # boundary has no neighbour to blend with.
+            top = trim if ty > 0 else 0
+            left = trim if tx > 0 else 0
+            bottom = y_size - trim if (y_off + y_size) < raster_y else y_size
+            right = x_size - trim if (x_off + x_size) < raster_x else x_size
+            if bottom <= top or right <= left:  # pragma: no cover - tiny raster
+                top, left, bottom, right = 0, 0, y_size, x_size
+
+            # Bounds hoisted into locals so the slice expressions stay
+            # simple — black formats `a + b : c + d` with spaces around
+            # the colon, which the QGIS plugin scanner rejects as E203.
+            dst_y0 = y_off + top
+            dst_y1 = y_off + bottom
+            dst_x0 = x_off + left
+            dst_x1 = x_off + right
+            labels[dst_y0:dst_y1, dst_x0:dst_x1] = tile_labels[top:bottom, left:right]
+            confidence[dst_y0:dst_y1, dst_x0:dst_x1] = tile_conf[top:bottom, left:right]
+
+            tiles_processed += 1
+            if feedback:
+                feedback.setProgress(int(100 * tiles_processed / total_tiles))
+        if cancelled:
+            break
+
+    ds = None
+
+    present, counts = np.unique(labels, return_counts=True)
+    class_counts = {int(c): int(n) for c, n in zip(present, counts)}
+
+    return {
+        "labels": labels,
+        "confidence": confidence,
+        "geo_transform": geo_transform,
+        "projection": projection,
+        "class_counts": class_counts,
+        "labels_present": [int(c) for c in present],
+        "total_tiles": total_tiles,
+        "tiles_processed": tiles_processed,
+        "model_type": "semantic_segmentation",
+        "cancelled": cancelled,
+    }
 
 
 def detect_features(

@@ -7,10 +7,16 @@ rules:
   Output is float32 in range [0, 180] (usually [0, 90]).
   Uses the same supersampled horizon scan as SVF (see core/svf.py) so
   that horizon pixels on diagonal azimuths are correctly sampled.
+  The GPU import must stay inside the function body — gpu/compute_backend
+  imports back from core/svf.py, so a module-level import risks a cycle.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Added the opt-in use_gpu dispatch so the CuPy backend is
+         reachable from the Processing UI; the GPU kernels now share
+         _build_horizon_samples with this file.
 """
 
 import numpy as np
-from .array_utils import _shift_array
+from .array_utils import _shift_array, horizon_sin
 from .svf import _build_horizon_samples
 
 
@@ -21,6 +27,7 @@ def topographic_openness(
     search_radius: int = 10,
     is_negative: bool = False,
     feedback=None,
+    use_gpu: bool = False,
 ) -> np.ndarray:
     """Compute Topographic Openness (Positive or Negative) for each pixel.
 
@@ -37,10 +44,26 @@ def topographic_openness(
         search_radius: Maximum search distance in pixels.
         is_negative: If True, compute Negative Openness instead.
         feedback: Optional QGIS feedback object for progress/cancellation.
+        use_gpu: Opt in to the CuPy backend. Falls back to this NumPy
+            implementation when CuPy/CUDA is unavailable, so callers
+            never have to branch.
 
     Returns:
         Float32 array of Openness values in degrees.
     """
+    if use_gpu:
+        # Imported here, not at module scope — see the module rules.
+        from ..gpu.compute_backend import compute_openness_gpu
+
+        return compute_openness_gpu(
+            dem,
+            cellsize,
+            num_directions=num_directions,
+            search_radius=search_radius,
+            is_negative=is_negative,
+            feedback=feedback,
+        )
+
     rows, cols = dem.shape
 
     # For negative openness, invert the DEM
@@ -76,10 +99,7 @@ def topographic_openness(
             shifted = _shift_array(dem_filled, row_shift, col_shift, dem_mean)
 
             delta_z = shifted - dem_filled
-            hypot_3d = np.hypot(delta_z, actual_dist)
-            # Avoid division by zero; also clamp to avoid NaN from arcsin later
-            hypot_3d = np.where(hypot_3d == 0, 1.0, hypot_3d)
-            sin_angle = delta_z / hypot_3d
+            sin_angle = horizon_sin(delta_z, actual_dist)
 
             max_sin = np.maximum(max_sin, sin_angle)
 

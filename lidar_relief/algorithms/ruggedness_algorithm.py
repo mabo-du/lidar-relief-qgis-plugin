@@ -9,9 +9,10 @@ from qgis.core import (
 from ..core.raster_utils import process_in_tiles
 from ..core.ruggedness import compute_ruggedness
 from ..styling import ReliefLayerPostProcessor
+from .provenance_mixin import ProvenanceMixin
 
 
-class RuggednessAlgorithm(QgsProcessingAlgorithm):
+class RuggednessAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
     """Riley 3x3 Terrain Ruggedness Index."""
 
     INPUT = "INPUT"
@@ -63,6 +64,14 @@ class RuggednessAlgorithm(QgsProcessingAlgorithm):
 
         if feedback.isCanceled():
             return {}
+
+        self.record_provenance(
+            output_path,
+            parameters={"method": "riley_3x3"},
+            source_path=source.source(),
+            feedback=feedback,
+        )
+
         if context.willLoadLayerOnCompletion(output_path):
             details = context.layerToLoadOnCompletionDetails(output_path)
             details.setPostProcessor(

@@ -10,7 +10,7 @@ rules:
 
 import numpy as np
 
-from .array_utils import _shift_array
+from .array_utils import _shift_array, horizon_sin
 from .svf import _build_horizon_samples
 
 
@@ -75,9 +75,7 @@ def anisotropic_sky_view_factor(
             shifted = _shift_array(dem_filled, row_shift, col_shift, dem_mean)
 
             delta_z = shifted - dem_filled
-            hypot_3d = np.hypot(delta_z, actual_dist)
-            hypot_3d = np.where(hypot_3d == 0, 1.0, hypot_3d)
-            sin_angle = delta_z / hypot_3d
+            sin_angle = horizon_sin(delta_z, actual_dist)
 
             if noise_level > 0:
                 is_tracking = countdown > 0

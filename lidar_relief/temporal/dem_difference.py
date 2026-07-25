@@ -10,6 +10,13 @@ rules:
   Uses xarray + rioxarray for labeled array operations.
   Probabilistic Level of Detection (LoD) masks noise using propagated RMSE.
   All dependencies are optional — check availability before calling.
+  Use rio.write_crs(..., inplace=True) to stamp a CRS. rio.set_crs() is
+  deprecated AND returns a copy, so its result is silently discarded.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Replaced the dead ["crs","transform"] loop (loop variable was
+         never used; set_crs called twice, result discarded both times)
+         with write_crs(inplace=True). Clears the FutureWarning the
+         test suite was emitting and survives set_crs removal.
 """
 
 import logging
@@ -301,17 +308,21 @@ def compute_dod_xarray(
     dod_out = dod.copy()
     mask_out = mask.copy()
 
-    for attr_name in ["crs", "transform"]:
-        for ds in [dod_out, mask_out]:
-            if hasattr(ds, "rio"):
-                try:
-                    ds.rio.set_crs(dem_old.rio.crs)
-                except Exception as e:
-                    import logging
-
-                    logging.getLogger(__name__).warning(
-                        "Failed to set CRS on DoD output: %s", e
-                    )
+    # Stamp the source CRS onto both outputs.
+    #
+    # The previous version looped over ["crs", "transform"] without ever
+    # using the loop variable — so it just called set_crs twice — and
+    # `rio.set_crs()` returns a NEW object by default, meaning the result
+    # was discarded either way. It also emits a FutureWarning and is
+    # slated for removal from rioxarray. `write_crs(inplace=True)` is the
+    # supported API and actually mutates the object we go on to write.
+    for name, data_array in (("DoD", dod_out), ("mask", mask_out)):
+        if not hasattr(data_array, "rio"):
+            continue
+        try:
+            data_array.rio.write_crs(dem_old.rio.crs, inplace=True)
+        except Exception as e:
+            logger.warning("Failed to set CRS on %s output: %s", name, e)
 
     # Write using rioxarray
     try:

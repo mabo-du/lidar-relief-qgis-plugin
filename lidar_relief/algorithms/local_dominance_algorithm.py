@@ -136,9 +136,12 @@ class LocalDominanceAlgorithm(QgsProcessingAlgorithm):
 
         if context.willLoadLayerOnCompletion(output_path):
             details = context.layerToLoadOnCompletionDetails(output_path)
-            # Standard stretch is fine, but LD is now normalized 0-255 natively
+            # Local Dominance now returns degrees, not a 0-255 byte scale,
+            # so use the same std-dev stretch as the other angular
+            # visualisations. A min/max stretch would let one outlier
+            # cell flatten the rest of the image.
             details.setPostProcessor(
-                ReliefLayerPostProcessor("Local Dominance", stretch_type="minmax")
+                ReliefLayerPostProcessor("Local Dominance", stretch_type="stddev")
             )
 
         return {self.OUTPUT: output_path}

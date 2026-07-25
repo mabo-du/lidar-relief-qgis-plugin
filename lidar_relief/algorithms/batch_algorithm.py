@@ -17,7 +17,7 @@ from qgis.core import (
 )
 
 import numpy as np
-from ..core.raster_utils import process_in_tiles
+from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
 from ..core.presets import get_preset
 
 from ..core.hillshade import multidirectional_hillshade
@@ -443,9 +443,21 @@ class BatchAlgorithm(QgsProcessingAlgorithm):
         }
         tile_size = self.parameterAsInt(parameters, self.TILE_SIZE, context)
 
-        # Override with preset if not manual
+        # Override with preset if not manual.
+        #
+        # Presets are defined in METRES and converted here using the DEM's
+        # real cell size. They used to be stored in pixels, which made them
+        # correct only on a 1 m DEM — on 0.25 m LiDAR every preset radius
+        # was silently a quarter of its intended real-world size.
         if preset_key is not None:
-            preset = get_preset(preset_key)
+            preset_cellsize = get_cell_size_from_path(source.source())
+            preset = get_preset(preset_key, preset_cellsize)
+            feedback.pushInfo(
+                f"Preset '{preset_key}' scaled for {preset_cellsize:g} m cells: "
+                f"SVF r={preset['svf']['search_radius']} px, "
+                f"openness r={preset['openness']['search_radius']} px, "
+                f"SLRM r={preset['slrm']['trend_radius']} px"
+            )
             p_cfg["svf_radius"] = preset["svf"]["search_radius"]
             p_cfg["svf_noise"] = preset["svf"]["noise_level"]
             p_cfg["openness_radius"] = preset["openness"]["search_radius"]

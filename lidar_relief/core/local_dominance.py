@@ -1,8 +1,28 @@
 """local_dominance.py — Local Dominance visualization.
 exports: compute_local_dominance(dem, cellsize, min_rad, max_rad, rad_inc, anglr_res, observer_h) -> ndarray
 used_by: algorithms/local_dominance_algorithm.py → compute_local_dominance
+         export/contact_sheet.py → compute_local_dominance
 rules:
   Pure NumPy — no QGIS imports.
+  Output is the mean depression angle in DEGREES — the angle by which an
+  observer standing observer_h above the cell looks DOWN on the
+  surrounding terrain. Positive = locally dominant (a summit or bank),
+  near zero = flat, negative = dominated (a hollow or ditch floor).
+  Do NOT byte-scale in here. Every other core algorithm returns its
+  natural physical unit (slope and openness in degrees, SVF in 0..1) and
+  lets the QGIS post-processor stretch for display; this one used to
+  byte-scale against hard-coded limits and produced an all-zero raster.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Fixed: the function returned arctan(...) in RADIANS (typically
+         0.04-0.24 on real terrain) then byte-scaled with
+         (v - 0.5) / (1.8 - 0.5) * 255, limits that only make sense for
+         a degree-scale quantity. Every pixel fell below 0.5 and clipped
+         to zero, so Local Dominance emitted a CONSTANT raster for any
+         terrain short of a cliff face. Now returns degrees and leaves
+         display stretching to the post-processor.
+         message: "found by rendering the new contact sheet — panel 8
+         was flat grey while the other ten showed the test earthworks.
+         A whole advertised algorithm was silently dead."
 """
 
 import numpy as np
@@ -18,7 +38,18 @@ def compute_local_dominance(
     observer_h: float = 1.7,
     feedback=None,
 ) -> np.ndarray:
-    """Compute Local Dominance using horizon-scanning ray trace."""
+    """Compute Local Dominance using horizon-scanning ray trace.
+
+    For every direction and radius in range, measures the angle from the
+    observer's eye (``observer_h`` above the cell) down to the terrain at
+    that offset, and averages.
+
+    Returns:
+        Float32 array of mean depression angle in DEGREES. Typical bare
+        terrain sits within a few degrees of zero; banks, barrows and
+        summits read high, ditch floors and hollows read low.
+        NaN where the input was nodata.
+    """
     if cellsize <= 0:
         raise ValueError("cellsize must be greater than 0")
 
@@ -84,7 +115,8 @@ def compute_local_dominance(
     with np.errstate(invalid="ignore"):
         ld_final = np.where(valid_counts > 0, ld_accumulator / valid_counts, np.nan)
 
-    # Byte-scale
-    ld_byte = np.clip((ld_final - 0.5) / (1.8 - 0.5) * 255, 0, 255)
-
-    return ld_byte.astype(np.float32)
+    # Convert the mean angle from radians to degrees. The previous code
+    # byte-scaled here with (v - 0.5) / (1.8 - 0.5) * 255; those limits
+    # suit a degree-scale quantity, but ld_final is in radians and runs
+    # roughly 0.04..0.24 on real terrain, so every pixel clipped to 0.
+    return np.degrees(ld_final).astype(np.float32)

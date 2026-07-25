@@ -7,19 +7,39 @@ exports: get_backend() -> str,
          compute_svf_gpu(dem, cellsize, **kwargs) -> np.ndarray,
          compute_openness_gpu(dem, cellsize, **kwargs) -> np.ndarray
 
-used_by: core/svf.py (optional acceleration),
-         core/openness.py (optional acceleration)
+used_by: core/svf.py → compute_svf_gpu (via sky_view_factor(use_gpu=True))
+         core/openness.py → compute_openness_gpu
+             (via topographic_openness(use_gpu=True))
 
 rules:
-  Dynamic dispatch: CuPy if NVIDIA GPU available, else NumPy.
-  GPU implementations aim to produce **numerically close** results to
-  NumPy (typically within 1e-6 for float32), but NOT bit-identical —
-  CUDA floating-point operations are not bit-reproducible across GPU
-  architectures or drivers, and the GPU path may use a different
-  accumulator dtype than the CPU path. Callers that require
-  bit-identical output (e.g. for reproducible test fixtures) should
-  force the NumPy backend via ``get_backend() == "numpy"``.
-  No CUDA-specific code in the main algorithm cores.
+  Dynamic dispatch: CuPy if an NVIDIA GPU is available, else NumPy.
+  The GPU kernels MUST consume the SAME horizon sample geometry as the
+  CPU path — ``core.svf._build_horizon_samples``. Do not re-derive
+  directions here. The pre-2.0.23 implementation used
+  ``round(cos(theta))``/``round(sin(theta))``, which quantises every
+  azimuth to one of 8 integer directions: 16- and 32-direction requests
+  silently collapsed to 8, and the ray stepped in whole-pixel units
+  instead of the supersampled/deduplicated ray the CPU walks. GPU and
+  CPU results disagreed by far more than float error.
+  GPU results are **numerically close** to NumPy (typically within 1e-5
+  for float32) but NOT bit-identical — CUDA floating-point operations
+  are not bit-reproducible across GPU architectures or drivers. Callers
+  that require bit-identical output (e.g. reproducible test fixtures)
+  should force the NumPy backend via ``get_backend(prefer_cuda=False)``.
+  No CUDA-specific code in the main algorithm cores — cores dispatch
+  here and this module owns every CuPy reference.
+agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
+         Rewrote the horizon kernels to share _build_horizon_samples so
+         GPU == CPU, hardened the CuPy import (a broken driver raised
+         out of `cp.is_available()` past the ImportError guard and took
+         the module down), and made noise_level fall back to CPU rather
+         than silently ignoring it. Wired the backend into
+         core/svf.py + core/openness.py — before this it was reachable
+         only from tests, so the README's "GPU acceleration" feature
+         did not exist for users.
+         message: "test_gpu's equivalence tests only run under CUDA, so
+         the direction-collapse bug was invisible on CI. Added
+         test_gpu_parity.py which asserts the sampling contract on CPU."
 """
 
 import logging
@@ -28,12 +48,28 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Try importing CuPy
+# Try importing CuPy.
+#
+# `cp.is_available()` probes the CUDA runtime and raises (not returns
+# False) when CuPy is installed against a driver that is missing, too
+# old, or mismatched — e.g. cupy.cuda.runtime.CUDARuntimeError. Catching
+# only ImportError let that propagate out of module import, which took
+# the whole plugin down at QGIS start-up for anyone with a stale CUDA
+# install. Any failure to probe means "no usable GPU".
 try:
     import cupy as cp
 
-    _CUDA_AVAILABLE = cp.is_available()
+    _CUDA_AVAILABLE = bool(cp.is_available())
 except ImportError:
+    _CUDA_AVAILABLE = False
+    cp = None
+except Exception as exc:  # pragma: no cover — needs a broken CUDA install
+    logger.warning(
+        "CuPy is installed but the CUDA runtime could not be probed (%s: %s). "
+        "Falling back to the NumPy backend.",
+        type(exc).__name__,
+        exc,
+    )
     _CUDA_AVAILABLE = False
     cp = None
 
@@ -99,59 +135,99 @@ def _shift_array_gpu(
     shift_x: int,
     fill_value: float = 0.0,
 ) -> "cp.ndarray":
-    """CuPy-native array shift (parallel to array_utils._shift_array)."""
+    """CuPy-native array shift (parallel to array_utils._shift_array).
+
+    Rules:
+        Semantics must match ``core.array_utils._shift_array`` exactly:
+        positive ``shift_y`` moves content DOWN, positive ``shift_x``
+        moves content RIGHT, and vacated edges take ``fill_value``
+        (no wrap-around).
+        The overlap along each axis is ``size - abs(shift)``. The
+        pre-2.0.23 code computed it as ``size + min(0, shift)`` minus
+        ``max(0, -shift)``, which is ``size`` for a positive shift and
+        ``size - 2*abs(shift)`` for a negative one — never right unless
+        the shift was zero. Every GPU horizon step therefore raised
+        ``ValueError: could not broadcast input array``, so the CuPy
+        path could not complete a single run on real CUDA hardware.
+    """
+    rows, cols = arr.shape
     result = cp.full_like(arr, fill_value)
     if shift_y == 0 and shift_x == 0:
         return arr.copy()
 
-    src_y_start = max(0, -shift_y)
-    src_x_start = max(0, -shift_x)
-    dst_y_start = max(0, shift_y)
-    dst_x_start = max(0, shift_x)
+    if shift_y >= 0:
+        src_row_start, src_row_end = 0, rows - shift_y
+        dst_row_start, dst_row_end = shift_y, rows
+    else:
+        src_row_start, src_row_end = -shift_y, rows
+        dst_row_start, dst_row_end = 0, rows + shift_y
 
-    src_y_end = arr.shape[0] + min(0, shift_y)
-    src_x_end = arr.shape[1] + min(0, shift_x)
+    if shift_x >= 0:
+        src_col_start, src_col_end = 0, cols - shift_x
+        dst_col_start, dst_col_end = shift_x, cols
+    else:
+        src_col_start, src_col_end = -shift_x, cols
+        dst_col_start, dst_col_end = 0, cols + shift_x
 
-    h = src_y_end - src_y_start
-    w = src_x_end - src_x_start
-    if h > 0 and w > 0:
-        result[dst_y_start : dst_y_start + h, dst_x_start : dst_x_start + w] = (  # noqa: E203
-            arr[src_y_start : src_y_start + h, src_x_start : src_x_start + w]  # noqa: E203
-        )
+    # Shift larger than the array: nothing overlaps, all fill_value.
+    if src_row_end <= src_row_start or src_col_end <= src_col_start:
+        return result
+
+    result[dst_row_start:dst_row_end, dst_col_start:dst_col_end] = arr[
+        src_row_start:src_row_end, src_col_start:src_col_end
+    ]
 
     return result
 
 
-def _compute_horizon_gpu(
-    dem: "cp.ndarray",
-    dx: int,
-    dy: int,
+def _max_sin_horizon_gpu(
+    dem_filled: "cp.ndarray",
+    fill_value: float,
+    row_shifts,
+    col_shifts,
+    dists,
     cellsize: float,
-    max_steps: int,
-    init_val: float = 0.0,
+    init_val: float,
 ) -> "cp.ndarray":
-    """Compute the horizon angle in a given direction using CuPy.
+    """Maximum sin(horizon angle) along one azimuth, on the GPU.
 
-    Parallel to the NumPy version in core/svf.py.
+    Walks the SAME (row_shift, col_shift, distance) samples the CPU
+    walks — see ``core.svf._build_horizon_samples`` — so the only
+    divergence from the NumPy path is float accumulation order.
+
+    Args:
+        dem_filled: DEM on the GPU with NaN already replaced.
+        fill_value: Value used for pixels shifted in from outside.
+        row_shifts: Integer row offsets along the ray.
+        col_shifts: Integer column offsets along the ray.
+        dists: True Euclidean distance to each sample, in pixel units.
+        cellsize: Pixel size in map units.
+        init_val: Starting value (0.0 for SVF, -1.0 for openness).
+
+    Returns:
+        CuPy float32 array of max sin(horizon) per pixel.
     """
-    rows, cols = dem.shape
-    horizon = cp.full((rows, cols), init_val, dtype=cp.float64)
+    max_sin = cp.full(dem_filled.shape, init_val, dtype=cp.float32)
 
-    distance = cp.sqrt(cp.float64(dx * cellsize) ** 2 + cp.float64(dy * cellsize) ** 2)
+    for row_shift, col_shift, dist_units in zip(row_shifts, col_shifts, dists):
+        actual_dist = dist_units * cellsize
+        if actual_dist == 0:
+            continue
 
-    for step in range(1, max_steps + 1):
-        shifted = _shift_array_gpu(dem, dy * step, dx * step, fill_value=cp.nan)
-        dz = shifted - dem
+        shifted = _shift_array_gpu(dem_filled, row_shift, col_shift, fill_value)
+        delta_z = shifted - dem_filled
+        # Mirrors core.array_utils.horizon_sin EXACTLY — not cp.hypot.
+        # test_gpu_parity.py asserts bit-equality against the CPU path
+        # through a NumPy-backed shim, so the two formulas must match
+        # operation for operation, not merely agree to a tolerance.
+        dist_sq = cp.float32(actual_dist) * cp.float32(actual_dist)
+        denom = cp.sqrt(delta_z * delta_z + dist_sq, dtype=cp.float32)
+        denom = cp.where(denom == 0, cp.float32(1.0), denom)
+        sin_angle = delta_z / denom
 
-        sin_angle = cp.where(
-            ~cp.isnan(shifted) & ~cp.isnan(dem),
-            dz / cp.sqrt(dz**2 + distance**2 * step**2),
-            init_val,
-        )
+        max_sin = cp.maximum(max_sin, sin_angle)
 
-        horizon = cp.maximum(horizon, sin_angle)
-
-    return horizon
+    return max_sin
 
 
 def compute_svf_gpu(
@@ -159,47 +235,70 @@ def compute_svf_gpu(
     cellsize: float,
     num_directions: int = 16,
     search_radius: int = 10,
+    noise_level: int = 0,
+    feedback=None,
 ) -> np.ndarray:
     """Compute Sky-View Factor using GPU acceleration.
+
+    Falls back to the NumPy implementation when CUDA is unavailable, or
+    when ``noise_level > 0`` (the look-ahead noise filter is CPU-only —
+    running an approximation here would silently change results relative
+    to the CPU path, which is worse than being slower).
 
     Args:
         dem: 2D float32 NumPy array.
         cellsize: Cell size in map units.
         num_directions: Number of azimuth directions.
         search_radius: Search radius in pixels.
+        noise_level: Look-ahead noise filter strength. Non-zero forces
+            the CPU path.
+        feedback: Optional QGIS feedback object for progress/cancellation.
 
     Returns:
         2D float32 NumPy array (SVF values, 0–1).
     """
+    from ..core.svf import _build_horizon_samples, sky_view_factor
+
     if not _CUDA_AVAILABLE:
-        logger.warning("CUDA not available, falling back to NumPy SVF")
-        from ..core.svf import sky_view_factor
-
-        return sky_view_factor(dem, cellsize, num_directions, search_radius)
-
-    # Transfer to GPU
-    d_dem = cp.asarray(dem, dtype=cp.float32)
-    nan_mask = cp.isnan(d_dem)
-    d_dem[nan_mask] = cp.nanmean(d_dem)
-
-    rows, cols = d_dem.shape
-    svf_accum = cp.zeros((rows, cols), dtype=cp.float64)
-
-    # Directions
-    angles = cp.linspace(0, 2 * cp.pi, num_directions, endpoint=False)
-    dx = cp.round(cp.cos(angles)).astype(cp.int32)
-    dy = cp.round(cp.sin(angles)).astype(cp.int32)
-
-    for i in range(num_directions):
-        horizon = _compute_horizon_gpu(
-            d_dem, int(dx[i]), int(dy[i]), cellsize, search_radius, init_val=0.0
+        logger.debug("CUDA not available, falling back to NumPy SVF")
+        return sky_view_factor(
+            dem, cellsize, num_directions, search_radius, noise_level, feedback
         )
-        horizon = cp.maximum(horizon, 0.0)
-        svf_accum += 1.0 - horizon
+    if noise_level > 0:
+        logger.info(
+            "SVF noise_level=%d requested; the look-ahead filter is CPU-only, "
+            "using the NumPy backend to keep results consistent.",
+            noise_level,
+        )
+        return sky_view_factor(
+            dem, cellsize, num_directions, search_radius, noise_level, feedback
+        )
 
-    svf = svf_accum / num_directions
+    nan_mask_cpu = np.isnan(dem)
+    dem_mean = float(np.nanmean(dem)) if not nan_mask_cpu.all() else 0.0
+
+    d_dem = cp.asarray(dem, dtype=cp.float32)
+    d_nan_mask = cp.asarray(nan_mask_cpu)
+    d_dem = cp.where(d_nan_mask, cp.float32(dem_mean), d_dem)
+
+    horizon_samples = _build_horizon_samples(num_directions, search_radius)
+    sin_horizon_sum = cp.zeros(d_dem.shape, dtype=cp.float32)
+
+    for dir_idx, row_shifts, col_shifts, dists in horizon_samples:
+        if feedback is not None and feedback.isCanceled():
+            return np.full_like(dem, np.nan)
+
+        max_sin = _max_sin_horizon_gpu(
+            d_dem, dem_mean, row_shifts, col_shifts, dists, cellsize, init_val=0.0
+        )
+        sin_horizon_sum += cp.maximum(max_sin, cp.float32(0.0))
+
+        if feedback is not None:
+            feedback.setProgress(int((dir_idx + 1) / num_directions * 100))
+
+    svf = 1.0 - (sin_horizon_sum / num_directions)
     svf = cp.clip(svf, 0.0, 1.0).astype(cp.float32)
-    svf[nan_mask] = cp.nan
+    svf = cp.where(d_nan_mask, cp.float32(np.nan), svf)
 
     return cp.asnumpy(svf)
 
@@ -210,8 +309,11 @@ def compute_openness_gpu(
     num_directions: int = 16,
     search_radius: int = 10,
     is_negative: bool = False,
+    feedback=None,
 ) -> np.ndarray:
     """Compute Topographic Openness using GPU acceleration.
+
+    Falls back to the NumPy implementation when CUDA is unavailable.
 
     Args:
         dem: 2D float32 NumPy array.
@@ -219,43 +321,48 @@ def compute_openness_gpu(
         num_directions: Number of azimuth directions.
         search_radius: Search radius in pixels.
         is_negative: If True, compute negative openness.
+        feedback: Optional QGIS feedback object for progress/cancellation.
 
     Returns:
         2D float32 NumPy array (degrees).
     """
+    from ..core.openness import topographic_openness
+    from ..core.svf import _build_horizon_samples
+
     if not _CUDA_AVAILABLE:
-        logger.warning("CUDA not available, falling back to NumPy Openness")
-        from ..core.openness import topographic_openness
-
+        logger.debug("CUDA not available, falling back to NumPy Openness")
         return topographic_openness(
-            dem, cellsize, num_directions, search_radius, is_negative
+            dem, cellsize, num_directions, search_radius, is_negative, feedback
         )
 
-    # Transfer to GPU
-    if is_negative:
-        dem_copy = -dem
-    else:
-        dem_copy = dem
+    working = -dem if is_negative else dem
 
-    d_dem = cp.asarray(dem_copy, dtype=cp.float32)
-    nan_mask = cp.isnan(d_dem)
-    d_dem[nan_mask] = cp.nanmean(d_dem)
+    nan_mask_cpu = np.isnan(working)
+    dem_mean = float(np.nanmean(working)) if not nan_mask_cpu.all() else 0.0
 
-    rows, cols = d_dem.shape
-    openness_accum = cp.zeros((rows, cols), dtype=cp.float64)
+    d_dem = cp.asarray(working, dtype=cp.float32)
+    d_nan_mask = cp.asarray(nan_mask_cpu)
+    d_dem = cp.where(d_nan_mask, cp.float32(dem_mean), d_dem)
 
-    angles = cp.linspace(0, 2 * cp.pi, num_directions, endpoint=False)
-    dx = cp.round(cp.cos(angles)).astype(cp.int32)
-    dy = cp.round(cp.sin(angles)).astype(cp.int32)
+    horizon_samples = _build_horizon_samples(num_directions, search_radius)
+    openness_sum = cp.zeros(d_dem.shape, dtype=cp.float32)
 
-    for i in range(num_directions):
-        horizon = _compute_horizon_gpu(
-            d_dem, int(dx[i]), int(dy[i]), cellsize, search_radius, init_val=-1.0
+    for dir_idx, row_shifts, col_shifts, dists in horizon_samples:
+        if feedback is not None and feedback.isCanceled():
+            return np.full_like(dem, np.nan)
+
+        max_sin = _max_sin_horizon_gpu(
+            d_dem, dem_mean, row_shifts, col_shifts, dists, cellsize, init_val=-1.0
         )
-        openness_accum += cp.pi / 2.0 - cp.arcsin(horizon)
+        # Clamp before arcsin — float drift can push max_sin outside
+        # [-1, 1] and arcsin would return NaN for those pixels.
+        max_sin = cp.clip(max_sin, -1.0, 1.0)
+        openness_sum += cp.pi / 2.0 - cp.arcsin(max_sin)
 
-    result = openness_accum / num_directions
-    result_deg = cp.degrees(result).astype(cp.float32)
-    result_deg[nan_mask] = cp.nan
+        if feedback is not None:
+            feedback.setProgress(int((dir_idx + 1) / num_directions * 100))
+
+    result_deg = cp.degrees(openness_sum / num_directions).astype(cp.float32)
+    result_deg = cp.where(d_nan_mask, cp.float32(np.nan), result_deg)
 
     return cp.asnumpy(result_deg)

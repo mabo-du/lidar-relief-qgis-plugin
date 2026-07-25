@@ -4,15 +4,75 @@ set -e
 echo "=== Installing Optional Test Dependencies ==="
 pip install rio-cogeo reportlab xarray rioxarray onnxruntime onnx 2>/dev/null || true
 pip install cloth-simulation-filter 2>/dev/null || true
+# rvt-py gates the ENTIRE golden-regression suite (test_golden_regression.py
+# does `pytest.importorskip("rvt")` at module scope) and laspy gates the
+# LAS->DEM integration test. Without them those modules report as "skipped",
+# which reads like a healthy run — that is how a 100%-failing CSF code path
+# and three GPU defects survived to v2.0.22. See "Interpreter requirements"
+# in README.md.
+pip install rvt-py laspy 2>/dev/null || true
+
+# GDAL's Python bindings must match the libgdal on this machine EXACTLY —
+# an unpinned `pip install gdal` grabs the newest release and aborts with
+# "Python bindings of GDAL X require at least libgdal X". Derive the version
+# from gdal-config. In the QGIS CI container osgeo is already present, so
+# this is a no-op there.
+if ! python3 -c "import osgeo" 2>/dev/null; then
+    if command -v gdal-config >/dev/null 2>&1; then
+        GDAL_VERSION="$(gdal-config --version)"
+        echo "--- osgeo missing; installing gdal==${GDAL_VERSION} to match libgdal ---"
+        pip install "gdal==${GDAL_VERSION}" 2>/dev/null || \
+            echo "(gdal build failed — install libgdal-dev, or run the suite" \
+                 "under an interpreter that already provides osgeo)"
+    else
+        echo "(gdal-config not found — GDAL-dependent tests will be skipped)"
+    fi
+fi
+
+echo "=== Verifying the interpreter can actually run the whole suite ==="
+# A skip count above ~5 means missing dependencies are hiding tests rather
+# than the suite being green. Report it loudly instead of letting a
+# partially-skipped run look like a pass.
+python3 - <<'PYCHECK'
+import importlib
+import sys
+
+required = {
+    "osgeo": "GDAL — gates 7 test modules",
+    "rvt": "rvt-py — gates the whole golden-regression suite",
+    "rasterio": "rasterio — gates fusion tests",
+    "rioxarray": "rioxarray — gates temporal tests",
+}
+missing = []
+for module, why in required.items():
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        missing.append(f"  - {module}: {why}")
+
+if missing:
+    print("WARNING: these tests will be SILENTLY SKIPPED, not run:")
+    print("\n".join(missing))
+    print(f"Interpreter: {sys.executable}")
+else:
+    print(f"OK — all gating dependencies present ({sys.executable})")
+PYCHECK
 
 echo "=== Running Code Formatter (ruff --check, read-only) ==="
 # Use --check instead of auto-format so test.sh never modifies tracked files
-# in CI. Auto-modification is what triggered the v2.0.11 publish failure —
-# `ruff format`'s default style places binary operators at line start (W503
-# violation per the QGIS plugin scanner's flake8 strict profile), which
-# reintroduces the very lint findings we removed. Drift is logged as a
-# warning but does not block CI; run `ruff format lidar_relief/` locally
-# before committing if you want autofix.
+# in CI. Drift is logged as a warning but does not block; run
+# `ruff format lidar_relief/` locally before committing if you want autofix.
+#
+# NOTE: the conflict this comment used to describe was misdiagnosed. It
+# blamed W503 (line break BEFORE a binary operator), but the scanner
+# profile below leaves W503 in flake8's default ignore list, so ruff's
+# operator placement is fine. The real clash was E203 — black-style
+# formatting of a slice such as `a[i : i + n]` puts a space before the
+# colon, which the scanner DOES flag. Two files were therefore left
+# permanently unformatted. Both have since been rewritten to hoist slice
+# bounds into locals, so the whole tree now satisfies the formatter and
+# the scanner at once. If you add a computed slice, assign its bounds to
+# locals first and this stays true.
 python3 -m ruff format lidar_relief/ --check || echo "(format drift detected; informational only)"
 
 echo "=== Running Linter (ruff check, no --fix) ==="

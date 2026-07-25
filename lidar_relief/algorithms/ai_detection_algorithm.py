@@ -12,6 +12,7 @@ from qgis.core import (
     QgsProcessingParameterFile,
     QgsProcessingParameterNumber,
     QgsProcessingParameterFileDestination,
+    QgsProcessingParameterRasterDestination,
     QgsProcessingOutputNumber,
     QgsProcessingException,
 )
@@ -21,7 +22,9 @@ from ..ml.detector import (
     load_model,
     detect_features,
     pixel_bbox_to_map_bbox,
+    segment_raster,
 )
+from ..ml.segmentation_export import polygonise_labels, write_label_raster
 
 
 class AiDetectionAlgorithm(QgsProcessingAlgorithm):
@@ -33,7 +36,9 @@ class AiDetectionAlgorithm(QgsProcessingAlgorithm):
     CONFIDENCE = "CONFIDENCE"
     IOU_THRESHOLD = "IOU_THRESHOLD"
     TILE_SIZE = "TILE_SIZE"
+    MIN_SEGMENT_PIXELS = "MIN_SEGMENT_PIXELS"
     OUTPUT_VECTOR = "OUTPUT_VECTOR"
+    OUTPUT_LABELS = "OUTPUT_LABELS"
     OUTPUT_COUNT = "OUTPUT_COUNT"
 
     def name(self):
@@ -55,11 +60,14 @@ class AiDetectionAlgorithm(QgsProcessingAlgorithm):
             "GeoPackage in the same CRS as the input raster.\n\n"
             "The plugin acts as an inference engine only — you must "
             "provide a pre-trained model in ONNX format.\n\n"
-            "Supported model types:\n"
-            "  - Object detection (YOLOv5/v7/v8/v11, SSD) → bounding boxes\n"
-            "  - Semantic segmentation (U-Net) → DETECTED but not yet "
-            "post-processed (planned for v2.1). Loading a segmentation "
-            "model returns zero detections and emits a warning.\n\n"
+            "Supported model types (detected automatically from the "
+            "model's output signature):\n"
+            "  - Object detection (YOLOv5/v7/v8/v11, SSD) → bounding-box "
+            "polygons\n"
+            "  - Semantic segmentation (U-Net, SegFormer, DeepLab) → a "
+            "class-index raster plus per-class polygons. Better suited to "
+            "archaeology, where ditches, banks and field systems are "
+            "linear or areal rather than box-shaped.\n\n"
             "Training your model:\n"
             "  1. Export your trained model to ONNX format\n"
             "  2. Create a labels.json file with class names\n"
@@ -122,10 +130,28 @@ class AiDetectionAlgorithm(QgsProcessingAlgorithm):
             )
         )
         self.addParameter(
+            QgsProcessingParameterNumber(
+                self.MIN_SEGMENT_PIXELS,
+                "Minimum segment size (pixels, segmentation models only)",
+                type=QgsProcessingParameterNumber.Type.Integer,
+                defaultValue=10,
+                minValue=1,
+                maxValue=100000,
+            )
+        )
+        self.addParameter(
             QgsProcessingParameterFileDestination(
                 self.OUTPUT_VECTOR,
                 "Output detection layer (GeoPackage)",
                 fileFilter="GeoPackage (*.gpkg)",
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterRasterDestination(
+                self.OUTPUT_LABELS,
+                "Output class raster (segmentation models only)",
+                optional=True,
+                createByDefault=False,
             )
         )
         self.addOutput(
@@ -170,6 +196,18 @@ class AiDetectionAlgorithm(QgsProcessingAlgorithm):
             f"Labels: {model['labels'] or 'none'}"
         )
 
+        if model["model_type"] == "semantic_segmentation":
+            return self._run_segmentation(
+                parameters,
+                context,
+                feedback,
+                raster=raster,
+                model=model,
+                confidence=confidence,
+                tile_size=tile_size,
+                output_path=output_path,
+            )
+
         feedback.setProgressText("Running inference...")
 
         try:
@@ -213,6 +251,109 @@ class AiDetectionAlgorithm(QgsProcessingAlgorithm):
         return {
             self.OUTPUT_VECTOR: output_path or "",
             self.OUTPUT_COUNT: count,
+        }
+
+    def _run_segmentation(
+        self,
+        parameters,
+        context,
+        feedback,
+        raster,
+        model,
+        confidence,
+        tile_size,
+        output_path,
+    ):
+        """Segment the raster and export a class raster plus polygons.
+
+        Rules:
+            The label raster is the primary evidence and the polygons are
+            derived from it, so write the raster even when vectorisation
+            yields nothing — an empty polygon layer plus a populated
+            raster tells the user their min-size threshold was too high,
+            whereas no output at all tells them nothing.
+        """
+        min_segment_pixels = self.parameterAsInt(
+            parameters, self.MIN_SEGMENT_PIXELS, context
+        )
+        labels_output = self.parameterAsOutputLayer(
+            parameters, self.OUTPUT_LABELS, context
+        )
+
+        feedback.setProgressText("Running segmentation inference...")
+        try:
+            result = segment_raster(
+                raster_path=raster.source(),
+                model=model,
+                confidence_threshold=confidence,
+                tile_size=tile_size,
+                feedback=feedback,
+            )
+        except Exception as e:
+            raise QgsProcessingException(f"Segmentation failed: {e}")
+
+        if result["cancelled"]:
+            return {}
+
+        labels = result["labels"]
+        class_counts = result["class_counts"]
+        total_pixels = int(labels.size)
+
+        summary = "\n".join(
+            f"  class {cid}: {n} px ({100.0 * n / total_pixels:.2f}%)"
+            for cid, n in sorted(class_counts.items())
+        )
+        feedback.pushInfo(f"Classes present:\n{summary}")
+
+        if labels_output:
+            try:
+                write_label_raster(
+                    labels,
+                    labels_output,
+                    result["geo_transform"],
+                    result["projection"],
+                )
+                feedback.pushInfo(f"Class raster: {labels_output}")
+            except Exception as e:
+                raise QgsProcessingException(f"Failed to write class raster: {e}")
+
+        polygon_count = 0
+        if output_path:
+            if os.path.exists(output_path):
+                raise QgsProcessingException(
+                    f"Output GeoPackage already exists: {output_path}. "
+                    "Delete it first or choose a different output path."
+                )
+            try:
+                polygon_count = polygonise_labels(
+                    labels,
+                    result["geo_transform"],
+                    result["projection"],
+                    output_path,
+                    labels_map=model.get("labels"),
+                    confidence=result["confidence"],
+                    min_area_pixels=min_segment_pixels,
+                    feedback=feedback,
+                )
+            except ValueError as e:
+                raise QgsProcessingException(str(e))
+            except Exception as e:
+                raise QgsProcessingException(f"Failed to vectorise segments: {e}")
+
+            feedback.pushInfo(
+                f"Wrote {polygon_count} segment polygons to {output_path}"
+            )
+            if polygon_count == 0 and len(class_counts) > 1:
+                feedback.pushWarning(
+                    f"The model classified pixels but no segment reached the "
+                    f"{min_segment_pixels}-pixel minimum. Lower 'Minimum "
+                    f"segment size' to keep smaller features."
+                )
+
+        return {
+            self.OUTPUT_VECTOR: output_path or "",
+            self.OUTPUT_LABELS: labels_output or "",
+            self.OUTPUT_COUNT: polygon_count,
         }
 
 
