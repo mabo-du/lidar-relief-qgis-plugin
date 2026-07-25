@@ -176,6 +176,20 @@ work at all. Horizon-scanning visualisations are roughly twice as fast.
 
 **Documentation**
 
+- **USER_GUIDE.md brought up to date for v2.1.** Documents the Contact Sheet,
+  radii in metres, semantic segmentation, provenance sidecars and the GPU
+  toggle; adds the two RVT algorithms, which the algorithm table had never
+  listed; and restates the Batch preset radii in metres with a note that
+  output produced by an earlier version on a non-1 m DEM was computed at a
+  different scale than those figures imply.
+- **Removed a false capability claim.** The user guide advertised "Instance
+  segmentation (Mask R-CNN): Returns polygons" as a supported model type. That
+  was never implemented. The AI section now states exactly which two model
+  types are supported, how each is detected, and what each produces.
+- **Algorithm count corrected to 31** across README, `metadata.txt` and both
+  QGIS smoke tests. The smoke tests assert the count exactly, which is what
+  caught the stale figures — a provider that fails to register an algorithm
+  and a release that forgets to update the docs both surface the same way.
 - **Corrected the Sky-View Factor formula note.** The docstring claimed the
   implementation deviated from Zakšek et al. (2011) by using a linear
   `1 − mean(sin(horizon))` instead of a `sin²` form. Verified against `rvt-py`

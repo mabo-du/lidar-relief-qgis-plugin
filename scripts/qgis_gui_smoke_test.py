@@ -9,7 +9,9 @@ import qgis.utils
 
 
 PLUGIN_ID = "lidar_relief"
-EXPECTED_ALGORITHM_COUNT = 29
+# Keep in step with scripts/qgis_smoke_test.py, provider.py, README.md and
+# lidar_relief/metadata.txt.
+EXPECTED_ALGORITHM_COUNT = 31
 iface = qgis.utils.iface
 if iface is None:
     raise RuntimeError("QGIS desktop interface is unavailable")

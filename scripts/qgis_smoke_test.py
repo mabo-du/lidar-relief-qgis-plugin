@@ -13,7 +13,12 @@ from osgeo import gdal, osr
 from qgis.core import QgsApplication, Qgis
 
 
-EXPECTED_ALGORITHM_COUNT = 29
+# Must match the addAlgorithm() calls in lidar_relief/provider.py, and the
+# counts quoted in README.md and lidar_relief/metadata.txt. This guard is
+# deliberately exact rather than a lower bound: it catches an algorithm that
+# silently fails to register (a bad import in provider.py takes the whole
+# provider down) as well as one added without updating the user-facing docs.
+EXPECTED_ALGORITHM_COUNT = 31
 TRI_ALGORITHM_ID = "lidar_relief:terrain_ruggedness_index"
 
 

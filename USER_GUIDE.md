@@ -1,4 +1,4 @@
-# LiDAR Relief Plugin User Guide — v2.0
+# LiDAR Relief Plugin User Guide — v2.1
 
 ## Introduction
 The LiDAR Relief QGIS Plugin provides archaeologically optimized terrain
@@ -6,24 +6,39 @@ visualization tools. It allows you to process Digital Elevation Models (DEMs)
 into highly readable formats to identify subtle micro-topography such as
 ancient ditches, walls, mounds, and paths.
 
-**v2.0 expands the plugin from a pure visualization tool into a complete
+**v2.0 expanded the plugin from a pure visualization tool into a complete
 prospection platform**, adding point cloud processing, multi-temporal change
 detection, multi-sensor fusion, AI feature detection, and professional
 export/publishing capabilities.
+
+**v2.1 makes the toolbox easier to navigate and its results easier to trust.**
+A Visualisation Contact Sheet renders several techniques side by side so you
+can pick one before committing to a full run; search radii can be given in
+metres rather than pixels, so a setting means the same thing on a 0.25 m and a
+2 m DEM; AI segmentation models now produce class rasters and polygons; and
+every terrain output is written with a provenance sidecar recording exactly
+how it was made.
 
 ## Quick start
 
 1. Install the plugin from **Plugins → Manage and Install Plugins…** by
    searching for **LiDAR Relief Visualization**.
 2. Load a projected DEM. Metric horizontal and vertical units are strongly
-   recommended so radii, slopes, and relief values remain interpretable.
+   recommended so radii, slopes, and relief values remain interpretable. From
+   v2.1 the plugin warns in the Processing log if your DEM uses a geographic
+   (latitude/longitude) CRS or has non-square pixels, both of which make
+   distance-based results meaningless.
 3. Open **Processing Toolbox → LiDAR Relief**.
-4. For an initial survey, run **Batch Relief Visualisation** with the landscape
+4. Not sure which visualization suits your landscape? Run **Visualisation
+   Contact Sheet** first. It renders several techniques over the same ground
+   as one labelled image in a few seconds.
+5. For an initial survey, run **Batch Relief Visualisation** with the landscape
    preset closest to your study area.
-5. Inspect several complementary outputs. No single visualization or automated
+6. Inspect several complementary outputs. No single visualization or automated
    detection should be treated as an archaeological classification.
-6. Record the input dataset, CRS, resolution, parameters, plugin version, and
-   outputs. Visualization Recipes and PDF reports can assist reproducibility.
+7. Record the input dataset, CRS, resolution, parameters, plugin version, and
+   outputs. Provenance sidecars now capture most of this automatically;
+   Visualization Recipes and PDF reports also assist reproducibility.
 
 ![TRI applied to a labelled synthetic archaeological landscape](docs/images/tri-synthetic-example.png)
 
@@ -44,7 +59,9 @@ appropriate, field validation.*
 | **Sky-View Factor (SVF)** | Diffuse illumination simulation | General prospection, ditches |
 | **Anisotropic SVF (ASVF)** | Directionally weighted SVF | Linear features perpendicular to light |
 | **Topographic Openness** | Positive = ridges, Negative = valleys | Stone walls (positive), ditches (negative) |
-| **Local Dominance** | Horizon-scanning ray trace | Subtle barrows, hollow ways |
+| **RVT Multi-directional Hillshade** | rvt-py reference implementation | Cross-validating against other RVT installs |
+| **RVT Topographic Openness** | rvt-py reference implementation | Cross-validating against other RVT installs |
+| **Local Dominance** | Mean depression angle, in degrees | Subtle barrows, hollow ways |
 | **Multi-Scale TP (MSTP)** | DEV at Broad/Meso/Local → RGB | Complex multi-period landscapes |
 | **Enhanced 4-MSTP (e4MSTP)** | 4-step composite (LD+Openness+Slope+SVF+MSTP) | Flat terrain, alluvial plains |
 | **VAT Composite** | Hillshade + Slope + Openness blend | European heritage base maps |
@@ -54,7 +71,41 @@ appropriate, field validation.*
 | **Terrain Ruggedness Index (TRI)** | Riley 3×3 local elevation contrast | Scarps, banks, stone spreads, quarrying, rough ground |
 | **Blend Visualizations** | Multiply, Screen, Overlay modes | Custom composites |
 | **Batch Relief Visualisation** | Multi-algorithm single-pass | Survey workflow efficiency |
+| **Visualisation Contact Sheet** | Several techniques as one labelled image | Choosing a visualization before a full run |
 | **ML-Ready VRT Export** | Normalized multi-band composites | CNN/LiDAR training datasets |
+
+#### Choosing a search radius
+
+Sky-View Factor, Topographic Openness, ASVF, SLRM and RVT Openness accept
+their radius in either **pixels** or **metres**. Pixels remain the default so
+existing Processing models keep working, but metres are usually what you
+actually mean: archaeological features have a real-world size, whereas a
+20-pixel radius is 20 m on a 1 m DEM and only 5 m on 0.25 m LiDAR.
+
+Whichever you choose, the Processing log reports the radius both ways, for
+example `SVF search radius: 80 px = 20.0 m (cell size 0.25 m)`. If that
+real-world figure looks too small for the earthwork you are hunting, the
+setting is wrong regardless of how reasonable the pixel count looked.
+
+#### Visualisation Contact Sheet
+
+Renders several visualizations of the same DEM as a single labelled
+multi-panel PNG, so you can see which technique reveals your features before
+committing to a full-resolution run.
+
+The DEM is downsampled before anything is computed, so a sheet returns in
+seconds even for a large tile. Choose the visualizations to include, the
+preview size, and how many panels per row.
+
+Two things to keep in mind:
+
+- Panels are **previews for choosing a technique**, not analytical output.
+  Interpret on full-resolution results.
+- Each panel is contrast-stretched independently, so **brightness is not
+  comparable between panels** — only structure is.
+
+Panel captions require `Pillow`. Without it the sheet still renders, with
+panels in the order listed in the algorithm dialog.
 
 #### Terrain Ruggedness Index (TRI)
 
@@ -135,6 +186,49 @@ users. Recipes include versioned schema, type validation, and metadata
 3. Share with colleagues or publish alongside your paper
 4. Anyone can import your recipe and reproduce your exact visualization
 
+#### Provenance sidecars
+
+Every terrain output is written with a companion JSON file named after it —
+`svf_output.tif.lidar-relief.json`. You do not need to enable anything.
+
+Each record captures:
+- Plugin version and algorithm
+- The parameters **actually used**, including the resolved pixel radius as
+  well as the metres you typed
+- Source raster path, a checksum, CRS, grid size and cell size
+- A UTC timestamp
+
+Where a recipe describes *what you intended*, a sidecar records *what
+happened* — to a specific file, on a specific day, from a specific input.
+
+**Inspect Provenance Record** reads one back and prints it. Point it at either
+the sidecar or the raster it describes. Optionally supply the source DEM and
+it will verify the DEM has not changed since, comparing file size, checksum,
+dimensions and CRS, and telling you plainly whether re-running the recorded
+parameters would still reproduce the result.
+
+Useful for archive deposit, CIfA-compliant reporting, and picking up your own
+analysis — or a colleague's — months later.
+
+Writing a sidecar can never fail the run that produced the raster; if the
+location is unwritable, you get a log note and your output.
+
+---
+
+### GPU acceleration
+
+Sky-View Factor and Topographic Openness have a **Use GPU acceleration**
+checkbox. With CuPy installed against a working CUDA driver, the horizon scan
+runs on the GPU; GPU and CPU walk the same horizon rays, so results agree to
+floating-point precision rather than merely being similar.
+
+Ticking the box can never fail a run. Without CuPy, with a broken driver, or
+with SVF noise removal enabled (that filter is CPU-only), the algorithm falls
+back to NumPy and logs the reason.
+
+**Requirements:** `cupy-cuda12x` matching your CUDA version
+(`pip install cupy-cuda12x`)
+
 ---
 
 ### Point-cloud processing
@@ -204,19 +298,46 @@ blend recipes.
 ### AI feature detection
 
 Run object detection or semantic segmentation on plugin visualizations
-using your own pre-trained ONNX model.
+using your own pre-trained ONNX model. The plugin is an inference engine
+only — you supply the trained model.
 
-**Supported model types:**
-- **Object detection (YOLOv5/v8/v11)**: Returns bounding boxes
-- **Semantic segmentation (U-Net)**: Returns pixel-wise class labels
-- **Instance segmentation (Mask R-CNN)**: Returns polygons
+**Supported model types.** The type is detected automatically from the
+model's output signature; you do not select it.
+
+| Type | Recognised by | Output |
+|------|---------------|--------|
+| **Object detection** (YOLOv5/v7/v8/v11, SSD) | A 3-D `(N, boxes, attrs)` output, or several output tensors | Bounding-box polygons with class and confidence |
+| **Semantic segmentation** (U-Net, SegFormer, DeepLab) | A single 4-D `(N, C, H, W)` output | A class-index raster **and** per-class polygons carrying area, pixel count and mean confidence |
+
+Instance segmentation (Mask R-CNN and similar) is **not** supported. Earlier
+versions of this guide listed it; that was never implemented.
+
+**Which should you use?** For archaeology, segmentation is usually the better
+fit. Ditches, banks, field systems and hollow ways are linear or areal, and a
+bounding box around a 400 m field boundary conveys very little. Detection
+suits compact, countable features such as barrows or shell mounds.
 
 **Workflow:**
 1. Train a model externally (PyTorch, Ultralytics, etc.)
 2. Export to ONNX format
-3. Create a `labels.json` file with class names
+3. Create a `labels.json` file with class names. Either a list, or an
+   object keyed by class index — for segmentation, index 0 is treated as
+   background and is excluded from the polygon output.
 4. In QGIS, run **AI Feature Detection (ONNX Model)**
-5. Detection results are written as a GeoPackage vector layer
+5. Results are written as a GeoPackage vector layer. Segmentation models can
+   additionally write the class-index raster, which is the primary evidence —
+   the polygons are derived from it and are lossy at feature boundaries.
+
+**Segmentation settings worth knowing:**
+- *Confidence threshold* — pixels whose winning class scores below this become
+  background, rather than asserting a class the model was unsure about.
+- *Minimum segment size* — drops polygons below this pixel count. Single-pixel
+  speckle is model noise, not archaeology. If you get a populated class raster
+  but no polygons, this is set too high.
+
+The raster is normalised against whole-raster percentiles before inference, so
+tiles are consistent with one another and the resulting map has no seams from
+tiles being scaled in isolation.
 
 **Requirements:** `onnxruntime` (`pip install onnxruntime`)
 
@@ -228,33 +349,54 @@ The **Batch Relief Visualisation** tool runs multiple algorithms in a single
 pass. Choose from 4 research-validated terrain presets or use manual settings:
 
 - **Flat / Agricultural**: Optimized for ploughed-out features in low-relief
-  terrain. SVF radius 10–20m, SLRM radius 20m, LD observer height 1.7m.
-- **Forested**: Dense canopy where ground points are sparse. SVF radius 10m,
-  SLRM radius 10–15m, LD observer height 1.5m.
+  terrain. SVF radius 20 m, openness 15 m, SLRM radius 20 m,
+  LD observer height 1.7 m.
+- **Forested**: Dense canopy where ground points are sparse. SVF radius 10 m,
+  openness 5 m, SLRM radius 12 m, LD observer height 1.5 m.
 - **Upland / Steep**: Prevents steep slopes from overpowering micro-relief.
-  SVF radius 5m, SLRM radius 5–10m.
+  SVF radius 5 m, openness 5 m, SLRM radius 8 m.
 - **Coastal**: Broad search radii for dune/estuarine modifications.
-  SVF radius 10–15m, SLRM radius 25m, LD observer height 2.0m.
+  SVF radius 15 m, openness 10 m, SLRM radius 25 m,
+  LD observer height 2.0 m.
+
+Preset distances are defined in **metres** and converted using your DEM's cell
+size, so a preset means the same real-world thing at any resolution. The log
+reports the converted pixel values at the start of each run.
+
+> Before v2.1 these distances were stored as pixel counts, which made the
+> presets correct only on a 1 m DEM — on 0.25 m LiDAR every preset radius was
+> silently a quarter of its intended size. If you have batch output from an
+> earlier version on a non-1 m DEM, it was computed at a different scale than
+> the figures above imply.
 
 ---
 
 ## Best Practices
 
 1. **CRS**: Ensure your DEM is projected in a metric CRS (UTM or local grid),
-   not geographic (degrees in latitude/longitude).
-2. **Start with Batch**: Use the Batch tool with a matching terrain preset.
-3. **Iterate**: If features are too faint, increase search radii. If too noisy,
+   not geographic (degrees in latitude/longitude). The plugin warns you in the
+   Processing log if it is not, and also if your pixels are not square — but
+   the warning is advisory, so read the log rather than assuming silence.
+2. **Pick a technique first**: Run the Contact Sheet before a full-resolution
+   run. It costs seconds and often saves a wasted half-hour.
+3. **Start with Batch**: Use the Batch tool with a matching terrain preset.
+4. **Think in metres**: Set search radii in metres and sanity-check the
+   real-world figure the log reports against the size of the feature you are
+   looking for.
+5. **Iterate**: If features are too faint, increase search radii. If too noisy,
    decrease them.
-4. **SVF Noise**: Enable noise reduction for DEMs with point-cloud noise
-   or complex topography.
-5. **e4MSTP**: Prepare for longer processing — it computes 7 underlying
+6. **SVF Noise**: Enable noise reduction for DEMs with point-cloud noise
+   or complex topography. Note this filter is CPU-only, so it overrides the
+   GPU checkbox.
+7. **e4MSTP**: Prepare for longer processing — it computes 7 underlying
    algorithms.
-6. **Export**: Use COG export for sharing with non-GIS stakeholders.
-7. **Field validation**: Use the Field Survey Export for ground-truthing.
-8. **Reproducibility**: Export a Visualization Recipe alongside any
-   published results.
-9. **AI models**: The plugin is an inference engine only — train models
-   externally in PyTorch/Ultralytics and export to ONNX.
+8. **Export**: Use COG export for sharing with non-GIS stakeholders.
+9. **Field validation**: Use the Field Survey Export for ground-truthing.
+10. **Reproducibility**: Keep the provenance sidecar with any output you
+    publish or deposit, and export a Visualization Recipe alongside it.
+11. **AI models**: The plugin is an inference engine only — train models
+    externally in PyTorch/Ultralytics and export to ONNX. Prefer segmentation
+    over detection for linear and areal features.
 
 ---
 
@@ -271,6 +413,7 @@ pass. Choose from 4 research-validated terrain presets or use manual settings:
 | GPU Acceleration | `cupy-cuda12x` | `pip install cupy-cuda12x` |
 | LAS/LAZ input | `laspy` or `pdal` | `pip install laspy` |
 | RVT Relief Toolbox | `rvt-py` | `pip install rvt-py` |
+| Contact sheet panel captions | `Pillow` | `pip install Pillow` |
 
 ## Getting help and reporting problems
 

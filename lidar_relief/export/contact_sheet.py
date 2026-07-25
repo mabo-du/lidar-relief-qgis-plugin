@@ -24,7 +24,7 @@ rules:
   comparison, never for measurement — the plugin's real algorithms
   produce the quantitative output.
 agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
-         New module. The plugin ships 29 algorithms and the README tells
+         New module. The plugin ships 30+ algorithms and the README tells
          users to "compare multiple visualizations", but offered no way
          to do that except running them one at a time and toggling
          layers.
