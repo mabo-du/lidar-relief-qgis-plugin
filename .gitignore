@@ -22,6 +22,14 @@ build/
 *.egg-info/
 *.zip
 
+# Staging copy of the plugin produced while preparing a release. It was
+# committed once by accident (v2.0.17) and sat five versions stale,
+# duplicating every symbol in the repo and getting swept into unrelated
+# formatting commits. Released builds live on GitHub Releases and every
+# release is tagged, so a checked-in snapshot has nothing to add.
+/published/
+published_changelog.txt
+
 # Documentation
 docs/*
 !docs/research-papers/
