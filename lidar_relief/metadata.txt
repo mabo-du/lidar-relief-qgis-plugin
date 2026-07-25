@@ -3,7 +3,7 @@ name=LiDAR Relief Visualization
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 description=A free, open-source QGIS toolkit with 31 Processing algorithms for archaeological LiDAR visualization and terrain analysis. Reveal subtle earthworks, prepare point clouds, compare surveys, combine LiDAR with satellite imagery, validate anomalies in the field, and produce reproducible research outputs.
-version=2.1.1
+version=2.1.2
 author=Mark Bouck
 email=markbouck@duck.com
 

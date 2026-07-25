@@ -5,6 +5,35 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+
+## [2.1.2] - 2026-07-25
+
+Ships the v2.1.1 work, which never reached plugins.qgis.org. No code changes
+beyond release tooling.
+
+**Fixed**
+
+- **A single percent sign in the changelog was silently breaking every
+  upload.** `qgis-plugin-ci` injects CHANGELOG.md into `metadata.txt`'s
+  `changelog=` field at release time, and the QGIS plugin registry parses that
+  file with configparser's `BasicInterpolation`, which treats the percent sign
+  as a control character. One that is not doubled, or followed by an opening
+  parenthesis, makes the entire `metadata.txt` unparseable — so the registry
+  refused the package. Because `qgis-plugin-ci` calls `raise_for_status()`
+  without ever reading `response.text`, the only symptom was a bare
+  `HTTP 400` with no reason given. v2.1.1 failed three times over the phrase
+  "an 84 percent reduction".
+
+  Every percent sign is now gone from CHANGELOG.md, and
+  `scripts/check_changelog.py` rejects undoubled ones with an explanation, so
+  `./test.sh` and the release workflow both catch this before it reaches the
+  registry. A test additionally proves the real changelog survives
+  interpolation, using the same parser the registry uses.
+
+  Older entries carried the same character for months without incident, only
+  because they sit below the slice of changelog that `qgis-plugin-ci` injects.
+  The trap was always armed, just out of reach.
+
 **Added**
 
 - **Releases now verify they actually reached QGIS users.** A "successful"
@@ -45,7 +74,7 @@ Documentation and packaging release. No algorithm behaviour changes.
   `metadata.txt`, which is what QGIS Plugin Manager renders.)
 - **The plugin icon was a JPEG named `.png`.** 1024×1024 and 590 KB, roughly
   half the entire download, for something QGIS draws at about 32 px. Converted
-  to a real 256×256 PNG: 93 KB, an 84% reduction, with no visible change.
+  to a real 256×256 PNG: 93 KB, a reduction of about 84 percent, with no visible change.
 
 **Added**
 
@@ -410,7 +439,7 @@ work at all. Horizon-scanning visualisations are roughly twice as fast.
 
 **Fixed**
 
-- **QGIS plugin scanner lint pass at 100% (0/22 findings remaining).** The
+- **QGIS plugin scanner lint pass complete (0 of 22 findings remaining).** The
   v2.0.12 zip produced 22 lint issues (`/scanner/.../report`) all in Code
   Quality (Flake8) — W504 ×7, E226 ×4, F401 ×2, F541 ×1, E201 ×2,
   E272 ×1, E128 ×2, E124 ×1. Eliminated all by:
@@ -444,12 +473,12 @@ work at all. Horizon-scanning visualisations are roughly twice as fast.
 **Fixed**
 - Release workflow (`release.yml`) hardened so `qgis-plugin-ci release` always publishes the exact working-tree contents at the tagged commit: (1) `actions/checkout@v4` now uses explicit `ref: ${{ github.ref_name }}` with `fetch-depth: 0` so a full history of the triggering tag is checked out instead of the shallow default; (2) new `Verify tree clean before package` step runs `git diff --quiet HEAD` (a tracked-files-only check that ignores untracked `__pycache__/` and `.pytest_cache/` produced by `./test.sh`) after the lint+test run and fails the workflow with a `::error` annotation if any tracked file diverges from HEAD.
 - `test.sh` switched from auto-modifying `ruff format` / `ruff check --fix` (which silently rewrote tracked files in CI and reintroduced W503 violations, blocking the publish guard on the v2.0.11 attempt) to read-only `ruff format --check` and `ruff check` chained with `|| echo "(informational only)"` so drift/lint warnings surface without blocking CI. The actual lint gate for the QGIS plugin scanner is `flake8 --isolated --select=W503,E402,E203` (run separately); ruff's default rule set is broader and is reporting only as developer feedback.
-- v2.0.8 → v2.0.10 published successfully but the artifacts available via the plugins.qgis.org API at scan time nonetheless lacked the lint fixes (`W503` and `E203` violations in `algorithms/blend_algorithm.py`, `algorithms/csf_algorithm.py`, `ml/detector.py`, `tests/test_golden_regression.py`); release.yml reproducibility fixes plus test.sh read-only mode make v2.0.12 the canonical 100%-lint-pass release.
+- v2.0.8 → v2.0.10 published successfully but the artifacts available via the plugins.qgis.org API at scan time nonetheless lacked the lint fixes (`W503` and `E203` violations in `algorithms/blend_algorithm.py`, `algorithms/csf_algorithm.py`, `ml/detector.py`, `tests/test_golden_regression.py`); release.yml reproducibility fixes plus test.sh read-only mode make v2.0.12 the canonical fully-lint-passing release.
 
 ## [2.0.10] - 2026-06-30
 
 **Fixed**
-- Lint scanner passes 100% with 0 findings across W503 (line break before binary operator), E402 (module-level import not at top of file), and E203 (whitespace before ':') rules. 18 fixes applied across 5 files (algorithms/blend_algorithm.py, algorithms/csf_algorithm.py, ml/detector.py, tests/test_golden_regression.py, tests/test_web_viewer.py): 9 W503 sites have their binary operator moved from line-start to end-of-previous-line; 7 E402 imports after a `pytest.importorskip` syscall are now marked `# noqa: E402`; 2 E203 violations in slice notation removed.
+- Lint scanner passes fully with 0 findings across W503 (line break before binary operator), E402 (module-level import not at top of file), and E203 (whitespace before ':') rules. 18 fixes applied across 5 files (algorithms/blend_algorithm.py, algorithms/csf_algorithm.py, ml/detector.py, tests/test_golden_regression.py, tests/test_web_viewer.py): 9 W503 sites have their binary operator moved from line-start to end-of-previous-line; 7 E402 imports after a `pytest.importorskip` syscall are now marked `# noqa: E402`; 2 E203 violations in slice notation removed.
 - Republished as v2.0.10 to bypass GitHub's `/archive/refs/tags/v2.0.9.zip` CDN cache. The v2.0.9 published artifact on plugins.qgis.org was the cached source archive (containing v2.0.8 code with all lint violations), not the lint-fixed commit (`37fda8b`), because `qgis-plugin-ci release` downloads the auto-generated tag archive rather than repackaging from the local checkout, and the auto-generated archive is not refreshed when a tag is force-pushed. A new tag name produces a fresh archive with the corrected code.
 
 ## [2.0.8] - 2026-06-30

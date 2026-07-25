@@ -305,6 +305,44 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def find_interpolation_hazards(changelog_path: Path) -> list[tuple[int, str]]:
+    """Find bare '%' characters, which break the plugins.qgis.org upload.
+
+    qgis-plugin-ci injects CHANGELOG.md into metadata.txt's `changelog=`
+    field at release time, and the QGIS plugin registry parses that file
+    with configparser's BasicInterpolation, where '%' is a control
+    character. A '%' not followed by '%' or '(' makes the whole
+    metadata.txt unparseable, and the upload is refused with a bare
+    HTTP 400 whose body qgis-plugin-ci discards — so the symptom is a
+    release that fails for no visible reason.
+
+    This cost v2.1.1 three failed release attempts over the phrase
+    "an 84% reduction".
+
+    Returns:
+        List of ``(line_number, line_text)`` for offending lines.
+    """
+    hazards = []
+    try:
+        text = changelog_path.read_text(encoding="utf-8")
+    except OSError:
+        return hazards
+
+    for number, line in enumerate(text.splitlines(), start=1):
+        index = 0
+        while index < len(line):
+            index = line.find("%", index)
+            if index == -1:
+                break
+            following = line[index + 1 : index + 2]  # noqa: E203
+            if following not in ("%", "("):
+                hazards.append((number, line.strip()))
+                break
+            # '%%' is already escaped; skip past it.
+            index += 2
+    return hazards
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     version = read_metadata_version(args.metadata).strip()
@@ -337,6 +375,21 @@ def main(argv: list[str] | None = None) -> int:
         failed = True
         print(
             f"::error ::CHANGELOG.md is not qgis-plugin-ci compatible: {reason}",
+            file=sys.stderr,
+        )
+
+    hazards = find_interpolation_hazards(args.changelog)
+    if not hazards:
+        if not args.quiet:
+            print("✓ CHANGELOG.md has no configparser interpolation hazards.")
+    else:
+        failed = True
+        detail = "; ".join(f"line {n}: {text[:70]}" for n, text in hazards[:5])
+        print(
+            "::error ::CHANGELOG.md contains a bare '%', which makes the "
+            "generated metadata.txt unparseable and gets the upload refused by "
+            "plugins.qgis.org with an unexplained HTTP 400. Write 'percent' "
+            f"instead, or escape it as '%%'. Offending lines — {detail}",
             file=sys.stderr,
         )
 
