@@ -1,0 +1,157 @@
+agent_sessions:
+  - agent: claude-opus-5
+    provider: anthropic
+    date: 2026-07-25
+    session_id: s_20260725_001
+    task: "Review pass: repair dead code paths, optimise horizon scans, add four features"
+    changed:
+      [
+        .codedna,
+        .gitignore,
+        CHANGELOG.md,
+        README.md,
+        test.sh,
+        lidar_relief/metadata.txt,
+        lidar_relief/provider.py,
+        lidar_relief/provenance.py,
+        lidar_relief/core/array_utils.py,
+        lidar_relief/core/asvf.py,
+        lidar_relief/core/local_dominance.py,
+        lidar_relief/core/openness.py,
+        lidar_relief/core/presets.py,
+        lidar_relief/core/raster_utils.py,
+        lidar_relief/core/ruggedness.py,
+        lidar_relief/core/rvt_vis.py,
+        lidar_relief/core/scale.py,
+        lidar_relief/core/svf.py,
+        lidar_relief/export/contact_sheet.py,
+        lidar_relief/gpu/compute_backend.py,
+        lidar_relief/ml/detector.py,
+        lidar_relief/ml/segmentation_export.py,
+        lidar_relief/point_cloud/csf_filter.py,
+        lidar_relief/temporal/dem_difference.py,
+        lidar_relief/algorithms/ai_detection_algorithm.py,
+        lidar_relief/algorithms/asvf_algorithm.py,
+        lidar_relief/algorithms/batch_algorithm.py,
+        lidar_relief/algorithms/contact_sheet_algorithm.py,
+        lidar_relief/algorithms/local_dominance_algorithm.py,
+        lidar_relief/algorithms/ml_export_algorithm.py,
+        lidar_relief/algorithms/openness_algorithm.py,
+        lidar_relief/algorithms/provenance_algorithm.py,
+        lidar_relief/algorithms/provenance_mixin.py,
+        lidar_relief/algorithms/ruggedness_algorithm.py,
+        lidar_relief/algorithms/rvt_openness_algorithm.py,
+        lidar_relief/algorithms/slrm_algorithm.py,
+        lidar_relief/algorithms/svf_algorithm.py,
+        lidar_relief/tests/test_contact_sheet.py,
+        lidar_relief/tests/test_csf_dem_export.py,
+        lidar_relief/tests/test_csf_integration.py,
+        lidar_relief/tests/test_golden_regression.py,
+        lidar_relief/tests/test_gpu_parity.py,
+        lidar_relief/tests/test_local_dominance.py,
+        lidar_relief/tests/test_ml_segmentation.py,
+        lidar_relief/tests/test_provenance.py,
+        lidar_relief/tests/test_raster_utils.py,
+        lidar_relief/tests/test_scale.py,
+        published/,
+      ]
+    visited:
+      [
+        lidar_relief/core/blend.py,
+        lidar_relief/core/emstp.py,
+        lidar_relief/core/hillshade.py,
+        lidar_relief/core/mstp.py,
+        lidar_relief/core/pca.py,
+        lidar_relief/core/slope.py,
+        lidar_relief/core/slrm.py,
+        lidar_relief/core/vat.py,
+        lidar_relief/point_cloud/pdal_pipeline.py,
+        lidar_relief/recipes/__init__.py,
+        lidar_relief/version.py,
+        lidar_relief/tests/conftest.py,
+        lidar_relief/tests/test_csf_filter.py,
+        lidar_relief/tests/test_gpu.py,
+        lidar_relief/tests/test_ml_detector.py,
+        package.sh,
+        release.sh,
+        setup.cfg,
+        scripts/check_changelog.py,
+        .qgis-plugin-ci,
+        .github/workflows/release.yml,
+      ]
+    message: >
+      Three ADVERTISED features were dead code paths, each with a passing
+      test suite that used fixtures too extreme or too gated to expose them.
+      (1) CSF Ground Filter raised TypeError on every LAS->DEM run:
+      gdal.GridOptions takes zfield as a field NAME and got the column index
+      2, and gdal.Grid was fed a .xyz file, which OGR cannot open as a vector
+      source. Nothing covered filter_las_file at all. (2) The CuPy GPU
+      backend was called from nowhere in the plugin, and held three defects —
+      _shift_array_gpu computed the overlap as `size` or `size - 2*|shift|`
+      instead of `size - |shift|`, so every horizon step raised a broadcast
+      ValueError; round(cos)/round(sin) quantised every azimuth to one of 8
+      integer directions, silently collapsing 16 and 32; and
+      cp.is_available() raises past an except-ImportError guard on a broken
+      driver, taking the plugin down at QGIS start-up. (3) Local Dominance
+      returned radians then byte-scaled with degree-scale limits
+      ((v-0.5)/1.3*255), so every pixel clipped to zero on anything gentler
+      than a cliff — found by rendering the new contact sheet, where its
+      panel was blank while ten others showed the test earthworks.
+      Also fixed: per-tile normalisation in ML inference (a uniform tile
+      scaled to all zeros regardless of elevation, wrecking segmentation
+      mosaics); process_in_tiles writing untagged NaN when the source
+      declared no nodata; GDAL error branches unreachable under
+      gdal.UseExceptions(); dem_difference's dead ["crs","transform"] loop
+      calling deprecated rio.set_crs(); and an SVF docstring that wrongly
+      claimed the implementation deviates from Zaksek et al. 2011 (verified
+      against rvt-py — the linear form IS the reference).
+      Added: Visualisation Contact Sheet, radii in metres (presets held
+      pixels, so they were only valid on a 1 m DEM), semantic segmentation
+      for AI detection, and provenance sidecars + an inspect algorithm.
+      MEASURE BEFORE OPTIMISING HERE. np.hypot was 1.54s of 2.00s of array
+      arithmetic (7x slower than sqrt(dz*dz+d*d), which agrees to float32
+      epsilon); my first guess, allocation in _shift_array, was 2.5%.
+      Tiled work is MEMORY-BANDWIDTH bound: parallelism caps at 1.7x and
+      four workers measured SLOWER than two on some raster shapes, with
+      processes no better than threads. Do not size the pool from cpu_count.
+      Threads also accept the local closures several wrappers pass, which
+      ProcessPoolExecutor cannot pickle.
+      Left open: metadata.txt still reads 2.0.22 and needs a bump before
+      tagging (the release guard fails on a mismatch); nine untracked
+      pre-2.0 ZIPs remain in _archive/ as the only surviving copies of
+      versions with neither a git tag nor a GitHub release; PDAL Python
+      bindings and CUDA are absent locally so those tests still skip.
+      Tests 207 -> 387.
+
+# Dependency policy: core terrain tools must work with what QGIS bundles.
+# Every optional package is import-guarded and degrades with an install
+# hint — see check_dependencies() in the modules that need one. Adding a
+# hard dependency outside `required` is a breaking change for users who
+# install from the QGIS Plugin Manager.
+packages:
+  python:
+    required:
+      # Supplied by QGIS itself; the plugin never pins these.
+      - gdal # osgeo.gdal / osgeo.ogr / osgeo.osr — all raster and vector I/O
+      - numpy>=1.20 # every core algorithm
+      - qgis # PyQGIS, used only by plugin.py, provider.py and algorithms/
+    optional:
+      - scipy # SLRM uniform_filter; falls back to a NumPy box filter
+      - rvt-py # RVT reference implementations + the golden-regression suite
+      - rio-cogeo # COG export
+      - reportlab # PDF reports
+      - cloth-simulation-filter # CSF ground filter (imports as CSF)
+      - laspy # LAS/LAZ reading; PDAL is the alternative
+      - pdal # PDAL classification pipelines
+      - xarray # multi-temporal DEM difference
+      - rioxarray # multi-temporal + fusion
+      - rasterio # multi-sensor Sentinel-2 fusion
+      - onnxruntime # AI feature detection and segmentation inference
+      - opencv-python # faster tile resize in ML preprocessing; NumPy fallback exists
+      - Pillow # contact sheet panel captions; sheet still renders unlabelled without it
+      - cupy-cuda12x # GPU backend for SVF and Openness; NumPy fallback always available
+    dev:
+      - pytest
+      - ruff
+      - flake8
+      - onnx # builds the synthetic segmentation model in test_ml_segmentation.py
