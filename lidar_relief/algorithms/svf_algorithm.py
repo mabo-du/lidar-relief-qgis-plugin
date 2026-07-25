@@ -30,11 +30,14 @@ from ..core.raster_utils import (
 from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..core.svf import sky_view_factor
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 from .provenance_mixin import ProvenanceMixin
 
 
-class SvfAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
+class SvfAlgorithm(ProvenanceMixin, HelpUrlMixin, QgsProcessingAlgorithm):
     """Sky-View Factor — portion of sky visible from each cell."""
+
+    HELP_ANCHOR = "choosing-a-search-radius"
 
     INPUT = "INPUT"
     NUM_DIRECTIONS = "NUM_DIRECTIONS"

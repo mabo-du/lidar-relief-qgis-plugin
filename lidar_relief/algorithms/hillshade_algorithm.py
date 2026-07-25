@@ -20,9 +20,10 @@ from ..core.raster_utils import (
 )
 from ..core.hillshade import multidirectional_hillshade
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class HillshadeAlgorithm(QgsProcessingAlgorithm):
+class HillshadeAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Multi-directional hillshade from a DEM raster layer."""
 
     INPUT = "INPUT"

@@ -21,9 +21,10 @@ from ..core.raster_utils import (
 from ..core.blend import blend_rasters
 from ..styling import ReliefLayerPostProcessor
 import numpy as np
+from .help_mixin import HelpUrlMixin
 
 
-class BlendAlgorithm(QgsProcessingAlgorithm):
+class BlendAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Blends two raster layers."""
 
     INPUT_A = "INPUT_A"

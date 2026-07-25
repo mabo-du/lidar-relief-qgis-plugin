@@ -27,10 +27,13 @@ from qgis.core import (
 )
 
 from ..provenance import read_sidecar, verify_source
+from .help_mixin import HelpUrlMixin
 
 
-class ProvenanceInspectAlgorithm(QgsProcessingAlgorithm):
+class ProvenanceInspectAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Show how an output was produced, and check it can be reproduced."""
+
+    HELP_ANCHOR = "provenance-sidecars"
 
     INPUT_SIDECAR = "INPUT_SIDECAR"
     SOURCE_DEM = "SOURCE_DEM"

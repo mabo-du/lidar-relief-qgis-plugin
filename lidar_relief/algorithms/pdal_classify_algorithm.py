@@ -36,6 +36,7 @@ from ..point_cloud.pdal_pipeline import (
     run_pipeline,
     ARCHAEOLOGY_PIPELINES,
 )
+from .help_mixin import HelpUrlMixin
 
 PRESET_NAMES = list(ARCHAEOLOGY_PIPELINES.keys())
 PRESET_LABELS = [
@@ -43,8 +44,10 @@ PRESET_LABELS = [
 ]
 
 
-class PdalClassifyAlgorithm(QgsProcessingAlgorithm):
+class PdalClassifyAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Classify ground points from LAS/LAZ using archaeology-tuned PDAL pipelines."""
+
+    HELP_ANCHOR = "point-cloud-processing"
 
     INPUT = "INPUT"
     PRESET = "PRESET"

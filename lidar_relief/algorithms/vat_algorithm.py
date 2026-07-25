@@ -18,9 +18,10 @@ from ..core.raster_utils import (
 )
 from ..core.vat import compute_vat
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class VatAlgorithm(QgsProcessingAlgorithm):
+class VatAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Visualisation for Archaeological Topography (VAT)."""
 
     INPUT = "INPUT"

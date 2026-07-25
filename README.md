@@ -16,6 +16,11 @@ AI feature detection, point cloud ground filtering, and export/publishing —
 all within QGIS. Core terrain tools have no dependencies beyond QGIS's bundled
 libraries; specialized capabilities clearly identify their optional packages.
 
+📖 **[Read the User Guide](lidar_relief/USER_GUIDE.md)** — every algorithm
+explained, with guidance on choosing between them. The guide also ships inside
+the plugin, and every algorithm dialog in QGIS has a **Help** button that opens
+it at the relevant section.
+
 ![Synthetic DEM and Terrain Ruggedness Index result](docs/images/tri-synthetic-example.png)
 
 *A reproducible synthetic example showing how TRI responds to a mound, ring
@@ -30,8 +35,10 @@ archaeological classification.*
    warns you in the Processing log before it starts — cell sizes in degrees
    make slope, SVF, openness, and every search radius meaningless.
 3. Open **Processing Toolbox → LiDAR Relief**.
-4. Start with **Batch Relief Visualisation** and the closest landscape preset,
-   or run **Terrain Ruggedness Index (TRI)** for local elevation contrast.
+4. Run **Visualisation Contact Sheet** to see several techniques over your own
+   ground in seconds, then start with **Batch Relief Visualisation** and the
+   closest landscape preset, or **Terrain Ruggedness Index (TRI)** for local
+   elevation contrast.
 5. Compare multiple visualizations and validate potential features against
    complementary evidence before interpretation.
 

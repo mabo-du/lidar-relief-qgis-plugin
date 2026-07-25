@@ -18,9 +18,10 @@ from ..core.raster_utils import (
 )
 from ..core.blend import simple_red_relief
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class RedReliefAlgorithm(QgsProcessingAlgorithm):
+class RedReliefAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Simple Red Relief Composite."""
 
     INPUT = "INPUT"

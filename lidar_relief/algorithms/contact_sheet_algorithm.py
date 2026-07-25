@@ -33,10 +33,13 @@ from ..export.contact_sheet import (
     visualisation_names,
     write_png,
 )
+from .help_mixin import HelpUrlMixin
 
 
-class ContactSheetAlgorithm(QgsProcessingAlgorithm):
+class ContactSheetAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Compare several relief visualisations side by side in one image."""
+
+    HELP_ANCHOR = "visualisation-contact-sheet"
 
     INPUT = "INPUT"
     VISUALISATIONS = "VISUALISATIONS"

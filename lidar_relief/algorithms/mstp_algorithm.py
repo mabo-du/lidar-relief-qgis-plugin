@@ -17,9 +17,10 @@ from ..core.raster_utils import (
 )
 from ..core.mstp import multi_scale_topographic_position
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class MstpAlgorithm(QgsProcessingAlgorithm):
+class MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Multi-Scale Topographic Position from a DEM."""
 
     INPUT = "INPUT"

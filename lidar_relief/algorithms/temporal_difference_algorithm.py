@@ -16,10 +16,13 @@ from qgis.core import (
 )
 
 from ..temporal.dem_difference import compute_dod, xarray_available
+from .help_mixin import HelpUrlMixin
 
 
-class TemporalDifferenceAlgorithm(QgsProcessingAlgorithm):
+class TemporalDifferenceAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Compute a probabilistic DEM of Difference (DoD) between two DEMs."""
+
+    HELP_ANCHOR = "multi-temporal-change-detection"
 
     DEM_OLD = "DEM_OLD"
     DEM_NEW = "DEM_NEW"

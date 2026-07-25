@@ -21,6 +21,7 @@ from ..point_cloud.csf_filter import (
     filter_las_file,
     ARCHAEOLOGY_PRESETS,
 )
+from .help_mixin import HelpUrlMixin
 
 PRESET_NAMES = list(ARCHAEOLOGY_PRESETS.keys())
 PRESET_LABELS = [
@@ -28,8 +29,10 @@ PRESET_LABELS = [
 ]
 
 
-class CsfAlgorithm(QgsProcessingAlgorithm):
+class CsfAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Generate a DEM from LAS/LAZ using archaeology-tuned CSF ground filtering."""
+
+    HELP_ANCHOR = "csf-ground-filter-laslaz-dem"
 
     INPUT = "INPUT"
     PRESET = "PRESET"

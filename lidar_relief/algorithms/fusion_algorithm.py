@@ -18,13 +18,16 @@ from ..fusion.sentinel_fusion import (
     apply_fusion_recipe,
     FUSION_RECIPES,
 )
+from .help_mixin import HelpUrlMixin
 
 RECIPE_NAMES = list(FUSION_RECIPES.keys())
 RECIPE_LABELS = [f"{r['name']} — {r['description']}" for r in FUSION_RECIPES.values()]
 
 
-class FusionAlgorithm(QgsProcessingAlgorithm):
+class FusionAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Fuse LiDAR relief with multispectral satellite imagery."""
+
+    HELP_ANCHOR = "multi-sensor-fusion"
 
     LIDAR_LAYER = "LIDAR_LAYER"
     S2_B4_RED = "S2_B4_RED"

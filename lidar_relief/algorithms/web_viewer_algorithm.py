@@ -25,9 +25,10 @@ from qgis.PyQt.QtGui import QIcon
 
 from ..export.web_viewer import generate_web_viewer
 from ..export.cog_exporter import validate_cog
+from .help_mixin import HelpUrlMixin
 
 
-class WebViewerAlgorithm(QgsProcessingAlgorithm):
+class WebViewerAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Standalone algorithm to generate a 3D Web Viewer from an existing COG."""
 
     INPUT = "INPUT"

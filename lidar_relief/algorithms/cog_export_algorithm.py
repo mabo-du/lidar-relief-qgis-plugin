@@ -24,14 +24,17 @@ from qgis.core import (
 
 from ..export.cog_exporter import convert_to_cog, cog_is_supported
 from ..export.web_viewer import generate_web_viewer
+from .help_mixin import HelpUrlMixin
 
 # Available COG compression profiles
 COG_PROFILES = ["deflate", "lzw", "zstd", "raw"]
 
 
-class CogExportAlgorithm(QgsProcessingAlgorithm):
+class CogExportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Export a raster to Cloud-Optimized GeoTIFF (COG) with optional
     interactive web viewer."""
+
+    HELP_ANCHOR = "export-to-cloud-optimized-geotiff-cog"
 
     INPUT = "INPUT"
     COG_PROFILE = "COG_PROFILE"

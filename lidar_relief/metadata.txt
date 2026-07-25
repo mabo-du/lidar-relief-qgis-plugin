@@ -3,7 +3,7 @@ name=LiDAR Relief Visualization
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99
 description=A free, open-source QGIS toolkit with 31 Processing algorithms for archaeological LiDAR visualization and terrain analysis. Reveal subtle earthworks, prepare point clouds, compare surveys, combine LiDAR with satellite imagery, validate anomalies in the field, and produce reproducible research outputs.
-version=2.1.0
+version=2.1.1
 author=Mark Bouck
 email=markbouck@duck.com
 
@@ -14,6 +14,7 @@ about=LiDAR Relief Visualization is a free and open-source archaeological terrai
     Core terrain tools work with libraries supplied by QGIS. Specialized capabilities use clearly identified optional packages and remain isolated, so missing optional dependencies do not prevent the plugin from loading.
     The plugin supports QGIS 3 and QGIS 4 and is tested through automated numerical, packaging, clean-runtime, and desktop-loader checks. It supports transparent, reproducible research without subscription fees or proprietary lock-in.
     Visualizations and automated detections are interpretive aids rather than archaeological classifications. Assess potential features using complementary evidence and, where appropriate, field validation.
+    New to the plugin? Run "Visualisation Contact Sheet" to compare techniques on your own DEM in seconds, then open any algorithm and press Help for the full user guide. The guide also ships inside the plugin folder as USER_GUIDE.md, and is online at https://github.com/dig-tools/lidar-relief-qgis-plugin/blob/main/lidar_relief/USER_GUIDE.md
 
 tracker=https://github.com/dig-tools/lidar-relief-qgis-plugin/issues
 repository=https://github.com/dig-tools/lidar-relief-qgis-plugin

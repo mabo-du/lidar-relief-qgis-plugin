@@ -24,11 +24,14 @@ from qgis.core import (
 )
 
 from ..export.field_packager import package_for_qfield
+from .help_mixin import HelpUrlMixin
 
 
-class FieldExportAlgorithm(QgsProcessingAlgorithm):
+class FieldExportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Package visualization rasters and anomaly points for QField/Mergin
     field survey validation."""
+
+    HELP_ANCHOR = "package-for-field-survey-qfieldmergin"
 
     INPUT_RASTER = "INPUT_RASTER"
     INPUT_ANOMALIES = "INPUT_ANOMALIES"

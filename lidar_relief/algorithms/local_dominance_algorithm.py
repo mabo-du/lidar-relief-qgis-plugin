@@ -16,9 +16,10 @@ from qgis.core import (
 from ..core.raster_utils import process_in_tiles
 from ..core.local_dominance import compute_local_dominance
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class LocalDominanceAlgorithm(QgsProcessingAlgorithm):
+class LocalDominanceAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Local Dominance algorithm."""
 
     INPUT = "INPUT"

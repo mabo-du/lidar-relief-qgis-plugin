@@ -27,11 +27,14 @@ from ..core.raster_utils import (
 from ..core.openness import topographic_openness
 from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 from .provenance_mixin import ProvenanceMixin
 
 
-class OpennessAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
+class OpennessAlgorithm(ProvenanceMixin, HelpUrlMixin, QgsProcessingAlgorithm):
     """Topographic Openness from a DEM raster layer."""
+
+    HELP_ANCHOR = "choosing-a-search-radius"
 
     INPUT = "INPUT"
     OPENNESS_TYPE = "OPENNESS_TYPE"

@@ -18,10 +18,13 @@ from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
 from ..core.asvf import anisotropic_sky_view_factor
 from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class AsvfAlgorithm(QgsProcessingAlgorithm):
+class AsvfAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Anisotropic Sky-View Factor algorithm."""
+
+    HELP_ANCHOR = "choosing-a-search-radius"
 
     INPUT = "INPUT"
     DIRECTIONS = "DIRECTIONS"

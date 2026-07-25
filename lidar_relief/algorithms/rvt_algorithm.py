@@ -21,9 +21,10 @@ from qgis.core import (
 from ..core.raster_utils import process_in_tiles
 from ..core.rvt_vis import has_rvt
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class RvtMultidirectionalHillshadeAlgorithm(QgsProcessingAlgorithm):
+class RvtMultidirectionalHillshadeAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Multi-directional hillshade using the rvt-py reference implementation.
 
     rvt-py (Relief Visualization Toolbox) is the de-facto reference Python

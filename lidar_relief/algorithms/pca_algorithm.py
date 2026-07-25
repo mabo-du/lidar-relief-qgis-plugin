@@ -19,9 +19,10 @@ from ..core.openness import topographic_openness
 from ..core.slope import compute_slope
 from ..core.local_dominance import compute_local_dominance
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class PcaAlgorithm(QgsProcessingAlgorithm):
+class PcaAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """PCA Composite algorithm."""
 
     INPUT = "INPUT"

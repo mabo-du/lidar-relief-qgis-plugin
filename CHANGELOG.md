@@ -6,6 +6,46 @@ All notable changes to LiDAR Relief Visualization are documented here.
 ## [Unreleased]
 
 
+## [2.1.1] - 2026-07-25
+
+Documentation and packaging release. No algorithm behaviour changes.
+
+**Fixed**
+
+- **The user guide was never in the published plugin.** `package.sh` copied
+  `CHANGELOG.md` and `USER_GUIDE.md` into the plugin folder before zipping, so
+  a locally built package contained them — but CI publishes through
+  `qgis-plugin-ci`, which builds its archive with `git archive`, seeing only
+  tracked files. Those temporary copies were invisible to it, so every release
+  since 2.0 shipped without the documentation the local script was carefully
+  adding, and the two packaging paths silently produced different artefacts.
+  `USER_GUIDE.md` is now tracked at `lidar_relief/USER_GUIDE.md` and ships by
+  virtue of being a plugin file; `package.sh` no longer copies anything, so
+  both paths produce the same package. (`CHANGELOG.md` is deliberately not
+  shipped as a file — `qgis-plugin-ci` already injects its content into
+  `metadata.txt`, which is what QGIS Plugin Manager renders.)
+- **The plugin icon was a JPEG named `.png`.** 1024×1024 and 590 KB, roughly
+  half the entire download, for something QGIS draws at about 32 px. Converted
+  to a real 256×256 PNG: 93 KB, an 84% reduction, with no visible change.
+
+**Added**
+
+- **Every algorithm dialog now has a Help button.** All 30 algorithms had
+  `shortHelpString`, but none implemented `helpUrl()`, so nothing in QGIS
+  pointed at the user guide — a user who never visited the GitHub repository
+  had no route to the documentation at all. Seventeen algorithms deep-link to
+  their own section of the guide; the rest open it at the top.
+- **A guard against dead help links.** `test_help_urls.py` checks that every
+  algorithm mixes in the help behaviour and that every anchor matches a real
+  heading in the shipped guide, so a renamed section fails the suite instead of
+  quietly dropping readers at the top of the page. The QGIS smoke test
+  additionally asserts, in a real QGIS runtime, that every registered algorithm
+  returns a help URL and that the guide is present in the installed plugin.
+- **Plugin Manager copy now points somewhere.** The `about=` text suggests the
+  Contact Sheet as a starting point and names both the in-app Help button and
+  the online guide. The README links to the guide from the top; it never did.
+
+
 ## [2.1.0] - 2026-07-25
 
 Minor release: two new Processing algorithms, semantic segmentation, radii in

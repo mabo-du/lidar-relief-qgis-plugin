@@ -20,9 +20,10 @@ from ..core.local_dominance import compute_local_dominance
 from ..core.slope import compute_slope
 from ..core.mstp import compute_mstp
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class E4MstpAlgorithm(QgsProcessingAlgorithm):
+class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """e4MSTP algorithm."""
 
     INPUT = "INPUT"

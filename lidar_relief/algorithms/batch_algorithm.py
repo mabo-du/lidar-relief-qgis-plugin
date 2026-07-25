@@ -32,9 +32,10 @@ from ..core.local_dominance import compute_local_dominance
 from ..core.asvf import anisotropic_sky_view_factor
 from ..core.pca import compute_pca_composite
 from ..core.emstp import compute_e4mstp
+from .help_mixin import HelpUrlMixin
 
 
-class BatchAlgorithm(QgsProcessingAlgorithm):
+class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Run multiple LiDAR relief algorithms on the same DEM in one step."""
 
     INPUT = "INPUT"

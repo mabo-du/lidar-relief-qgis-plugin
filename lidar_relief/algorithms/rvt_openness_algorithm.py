@@ -24,9 +24,10 @@ from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
 from ..core.rvt_vis import has_rvt
 from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class RvtOpennessAlgorithm(QgsProcessingAlgorithm):
+class RvtOpennessAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Topographic Openness using the rvt-py (Relief Visualization Toolbox)
     reference implementation.
 
@@ -38,6 +39,8 @@ class RvtOpennessAlgorithm(QgsProcessingAlgorithm):
     Useful for cross-validating results against other RVT installations
     (QGIS plugin, standalone tool, R package).
     """
+
+    HELP_ANCHOR = "choosing-a-search-radius"
 
     INPUT = "INPUT"
     OPENNESS_TYPE = "OPENNESS_TYPE"

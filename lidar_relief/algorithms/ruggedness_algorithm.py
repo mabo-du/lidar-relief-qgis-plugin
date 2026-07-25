@@ -9,11 +9,14 @@ from qgis.core import (
 from ..core.raster_utils import process_in_tiles
 from ..core.ruggedness import compute_ruggedness
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 from .provenance_mixin import ProvenanceMixin
 
 
-class RuggednessAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
+class RuggednessAlgorithm(ProvenanceMixin, HelpUrlMixin, QgsProcessingAlgorithm):
     """Riley 3x3 Terrain Ruggedness Index."""
+
+    HELP_ANCHOR = "terrain-ruggedness-index-tri"
 
     INPUT = "INPUT"
     OUTPUT = "OUTPUT"

@@ -25,10 +25,13 @@ from ..ml.detector import (
     segment_raster,
 )
 from ..ml.segmentation_export import polygonise_labels, write_label_raster
+from .help_mixin import HelpUrlMixin
 
 
-class AiDetectionAlgorithm(QgsProcessingAlgorithm):
+class AiDetectionAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Run AI feature detection on a raster using a user-provided ONNX model."""
+
+    HELP_ANCHOR = "ai-feature-detection"
 
     INPUT = "INPUT"
     MODEL_FILE = "MODEL_FILE"

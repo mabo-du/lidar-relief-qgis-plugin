@@ -14,6 +14,7 @@ from qgis.core import (
     QgsProcessingParameterBoolean,
     QgsProcessing,
 )
+from .help_mixin import HelpUrlMixin
 
 # Note: do NOT call gdal.UseExceptions() at module import time.
 # The v2.0.5 changelog promised "Removed global GDAL exceptions" — that
@@ -23,7 +24,7 @@ from qgis.core import (
 # behaviour of returning None on error instead of raising.
 
 
-class MlExportAlgorithm(QgsProcessingAlgorithm):
+class MlExportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Machine Learning Export algorithm."""
 
     INPUTS = "INPUTS"

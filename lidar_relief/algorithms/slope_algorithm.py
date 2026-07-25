@@ -20,9 +20,10 @@ from ..core.raster_utils import (
 )
 from ..core.slope import compute_slope
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 
 
-class SlopeAlgorithm(QgsProcessingAlgorithm):
+class SlopeAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Slope — terrain gradient in degrees or percent."""
 
     INPUT = "INPUT"

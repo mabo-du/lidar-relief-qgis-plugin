@@ -18,10 +18,13 @@ from qgis.core import (
 
 from ..recipes import export_recipe, import_recipe, validate_recipe
 from ..version import get_version
+from .help_mixin import HelpUrlMixin
 
 
-class RecipeExportAlgorithm(QgsProcessingAlgorithm):
+class RecipeExportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Export current algorithm parameters as a shareable JSON recipe."""
+
+    HELP_ANCHOR = "visualization-recipes"
 
     PARAMETERS = "PARAMETERS"
     NAME = "NAME"
@@ -133,7 +136,7 @@ class RecipeExportAlgorithm(QgsProcessingAlgorithm):
         return {self.OUTPUT: output_path}
 
 
-class RecipeImportAlgorithm(QgsProcessingAlgorithm):
+class RecipeImportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Import a visualization recipe JSON file and validate it."""
 
     INPUT = "INPUT"

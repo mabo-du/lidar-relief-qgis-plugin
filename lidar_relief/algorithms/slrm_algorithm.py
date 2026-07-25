@@ -22,11 +22,14 @@ from ..core.raster_utils import (
 from ..core.scale import RADIUS_UNIT_OPTIONS, RADIUS_UNIT_VALUES, resolve_radius
 from ..core.slrm import simple_local_relief_model
 from ..styling import ReliefLayerPostProcessor
+from .help_mixin import HelpUrlMixin
 from .provenance_mixin import ProvenanceMixin
 
 
-class SlrmAlgorithm(ProvenanceMixin, QgsProcessingAlgorithm):
+class SlrmAlgorithm(ProvenanceMixin, HelpUrlMixin, QgsProcessingAlgorithm):
     """Simple Local Relief Model — removes large-scale topography."""
+
+    HELP_ANCHOR = "choosing-a-search-radius"
 
     INPUT = "INPUT"
     RADIUS = "RADIUS"

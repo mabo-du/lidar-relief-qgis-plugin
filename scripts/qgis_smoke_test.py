@@ -84,6 +84,29 @@ def main() -> int:
         if TRI_ALGORITHM_ID not in algorithm_ids:
             raise AssertionError("Terrain Ruggedness Index was not registered")
 
+        # Every algorithm dialog must offer a route to the documentation.
+        # Checked here rather than in pytest because helpUrl() is resolved
+        # through the Qt/SIP object, so only a real QGIS runtime proves the
+        # mixin is actually in the MRO of the registered instance.
+        without_help = sorted(
+            algorithm.id()
+            for algorithm in provider.algorithms()
+            if not algorithm.helpUrl()
+        )
+        if without_help:
+            raise AssertionError(
+                f"{len(without_help)} algorithms have no help URL: {without_help}"
+            )
+
+        # The guide those URLs point at has to be inside the installed
+        # plugin, not merely in the source repository.
+        guide = Path(lidar_relief.__file__).parent / "USER_GUIDE.md"
+        if not guide.is_file():
+            raise AssertionError(
+                f"USER_GUIDE.md is missing from the installed plugin at {guide}; "
+                "it must ship in the package, not just the repo"
+            )
+
         import processing
 
         with tempfile.TemporaryDirectory(prefix="lidar-relief-smoke-") as directory:

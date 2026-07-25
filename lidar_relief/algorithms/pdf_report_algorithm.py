@@ -15,10 +15,13 @@ from qgis.core import (
 
 from ..export.report_generator import generate_report, reportlab_available
 from ..version import get_version
+from .help_mixin import HelpUrlMixin
 
 
-class PdfReportAlgorithm(QgsProcessingAlgorithm):
+class PdfReportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     """Generate a CIfA-compliant PDF report for a raster algorithm output."""
+
+    HELP_ANCHOR = "generate-pdf-report"
 
     INPUT = "INPUT"
     ALGORITHM_NAME = "ALGORITHM_NAME"
