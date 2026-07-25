@@ -5,6 +5,25 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+**Added**
+
+- **Releases now verify they actually reached QGIS users.** A "successful"
+  release job has not been a reliable signal: the v2.1.0 run reported success
+  and logged *"Plugin uploaded on plugins.qgis.org"*, yet the public repository
+  carried on serving 2.0.22 — the version was accepted but never approved, so
+  it never became installable, and nothing said so. The v2.1.1 upload was then
+  refused with a bare HTTP 400 whose response body `qgis-plugin-ci` discards.
+  Both states were invisible from the workflow.
+
+  `scripts/verify_published.py` now queries the public plugin repository after
+  every release and reports whether the released version is genuinely being
+  served, writing a warning annotation and a run summary. It is advisory
+  rather than fatal, because approval is a human queue on the QGIS side and a
+  red tick for normal moderation latency would just train everyone to ignore
+  it. It runs even when the upload step fails, since that is precisely when
+  the current published state is worth knowing. A network failure reports
+  "unknown", never "published".
+
 
 ## [2.1.1] - 2026-07-25
 

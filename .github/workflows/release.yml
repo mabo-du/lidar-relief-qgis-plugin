@@ -148,3 +148,30 @@ jobs:
               --create-plugin-repo \
               -c
           fi
+
+      - name: Verify the release reached plugins.qgis.org
+        # Runs even when the upload step failed — that is exactly when you
+        # most want to know what the public repository is currently serving.
+        #
+        # This exists because "the job went green" has not been a reliable
+        # signal. The v2.1.0 run succeeded and logged "Plugin uploaded on
+        # plugins.qgis.org", yet the public repository kept serving 2.0.22:
+        # accepted, but never approved, and therefore never installable. The
+        # following v2.1.1 upload was then refused with a bare HTTP 400 whose
+        # body qgis-plugin-ci discards. Both states were invisible.
+        #
+        # Deliberately advisory rather than fatal: approval is a human queue
+        # on the QGIS side, so a legitimate release can be pending for days
+        # and failing here would just teach everyone to ignore a red tick.
+        # It writes a warning annotation and a run summary instead.
+        if: always()
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          python3 scripts/verify_published.py "${VERSION}" | tee /tmp/publish-check.txt
+          {
+            echo "## plugins.qgis.org publication status"
+            echo
+            echo '```'
+            grep -v '^::' /tmp/publish-check.txt
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
