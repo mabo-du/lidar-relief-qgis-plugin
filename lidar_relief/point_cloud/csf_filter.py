@@ -39,12 +39,23 @@ import sys
 # on a few near-threshold points because the FMA ordering differs. This
 # manifested as an intermittent flake in
 # `test_csf_filter.py::TestCSFFilter::test_filter_deterministic` whenever
-# the host had multiple cores available. Setting OMP_NUM_THREADS=1 BEFORE
-# the CSF native module loads forces libgomp into a single-threaded
-# schedule, restoring bit-stable FP accumulation. Production (non-test)
-# imports do not see this restriction, so real point-cloud users still get
-# the OpenMP speedup for large inputs. `setdefault` honours any explicit
-# user override (e.g. CI runners may want to pin via env var).
+# the host had multiple cores available. Measured on identical input:
+# ground-point counts of 16, 16, 14, 16 across four multi-threaded runs,
+# against 12 identical single-threaded ones.
+#
+# BEST EFFORT ONLY — do not rely on this alone. libgomp reads
+# OMP_NUM_THREADS when the OpenMP runtime initialises, which may already
+# have happened if another extension (scipy, onnxruntime, a BLAS) pulled
+# OpenMP in before this module was imported. By then the variable is inert.
+# The reliable place to set it is the environment, before the interpreter
+# starts: `test.sh` exports it, and the tests.yml jobs set it at job level.
+# This setdefault remains as a fallback for anyone invoking pytest directly.
+#
+# Production (non-test) imports do not see this restriction, so real
+# point-cloud users still get the OpenMP speedup for large inputs; the
+# non-determinism is inherent to the library, which is why the test asserts
+# approximate rather than exact agreement. `setdefault` honours any
+# explicit user override.
 if "pytest" in sys.modules or "unittest" in sys.modules:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
 

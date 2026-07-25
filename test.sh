@@ -1,6 +1,28 @@
 #!/bin/bash
 set -e
 
+# Pin OpenMP to one thread for the whole test run.
+#
+# cloth-simulation-filter parallelises its cloth physics with
+# `#pragma omp parallel for`, and OpenMP floating-point accumulation is not
+# associative, so thread scheduling changes the result. Measured on identical
+# input: ground-point counts of 16, 16, 14, 16 across four runs multi-threaded,
+# versus 12 identical runs single-threaded. That is what makes
+# test_csf_filter.py::TestCSFFilter::test_filter_deterministic flaky.
+#
+# csf_filter.py already calls os.environ.setdefault("OMP_NUM_THREADS", "1")
+# when imported under a test runner, but that is inherently fragile: libgomp
+# reads the variable when the OpenMP runtime initialises, so the setdefault
+# only works if nothing has pulled OpenMP in first. Setting it here — before
+# the interpreter starts — removes the ordering question entirely, and covers
+# the release workflow, which runs this script rather than the tests.yml job
+# that has its own guard.
+#
+# This affects the TEST environment only. Real users keep multi-threaded CSF
+# and its speed; the non-determinism is inherent to the library, which is why
+# the test asserts approximate rather than exact agreement.
+export OMP_NUM_THREADS=1
+
 echo "=== Installing Optional Test Dependencies ==="
 pip install rio-cogeo reportlab xarray rioxarray onnxruntime onnx 2>/dev/null || true
 pip install cloth-simulation-filter 2>/dev/null || true

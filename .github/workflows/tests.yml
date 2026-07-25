@@ -160,15 +160,25 @@ jobs:
         # Belt-and-suspenders against the cloth-simulation-filter OpenMP
         # floating-point non-determinism flake in
         # tests/test_csf_filter.py::TestCSFFilter::test_filter_deterministic.
-        # csf_filter.py sets OMP_NUM_THREADS=1 when imported under pytest,
-        # restoring bit-stable FP accumulation by forcing libgomp into a
-        # single-threaded schedule. This step re-runs the determinism
-        # test 3 times in fresh Python processes to surface any future
-        # regression in that isolation (e.g. someone lifting the
-        # pytest-only OMP_NUM_THREADS guard into production, swapping the
-        # CSF wheel for one that ignores OMP_NUM_THREADS, or moving CSF
-        # to a thread-pool backend). Each invocation loads a brand-new
-        # Python process so the OpenMP FP accumulator starts cold.
+        # OpenMP FP accumulation is not associative, so thread scheduling
+        # changes the result: measured on identical input, ground-point
+        # counts of 16, 16, 14, 16 across four multi-threaded runs against
+        # 12 identical single-threaded ones.
+        #
+        # OMP_NUM_THREADS is set at job level below rather than relying on
+        # the os.environ.setdefault inside csf_filter.py. That setdefault
+        # runs at import time, but libgomp reads the variable when the
+        # OpenMP runtime initialises — so it only works if nothing has
+        # pulled OpenMP in first. Setting it in the environment removes the
+        # ordering question. test.sh exports the same thing, which is what
+        # covers the release workflow.
+        #
+        # This step still runs the test in three cold processes to catch a
+        # future regression in the mitigation itself: someone dropping the
+        # export, a CSF wheel that ignores OMP_NUM_THREADS, or a move to a
+        # thread-pool backend.
+        env:
+          OMP_NUM_THREADS: '1'
         run: |
           for i in 1 2 3; do
             echo "=== determinism check attempt $i ==="
@@ -183,12 +193,15 @@ jobs:
         env:
           PYTHONPATH: /usr/share/qgis/python:.
           LD_LIBRARY_PATH: /usr/lib
+          # Same reason as the determinism step above. Previously this job
+          # --deselect'ed the determinism test so the dedicated guard was its
+          # only execution path, but that left ./test.sh — and therefore the
+          # release workflow — running it unprotected. Pinning the thread
+          # count here instead means both paths run the same set of tests
+          # under the same conditions.
+          OMP_NUM_THREADS: '1'
         run: |
-          # The CSF determinism test is run 3x in the previous step as a
-          # permanent regression guard; --deselect avoids running it a 4th
-          # time here so the only execution path is the dedicated guard.
-          python3 -m pytest lidar_relief/tests/ --tb=short -v \
-            --deselect lidar_relief/tests/test_csf_filter.py::TestCSFFilter::test_filter_deterministic
+          python3 -m pytest lidar_relief/tests/ --tb=short -v
 
       - name: QGIS plugin runtime smoke test
         env:
