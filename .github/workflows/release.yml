@@ -91,8 +91,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${GITHUB_REF_NAME#v}
+          # Stop at the NEXT version header, not at a `---` rule. CHANGELOG.md
+          # contains no `---` lines at all, so the old terminator never fired
+          # and every release page got the entire changelog history appended
+          # to its notes — v2.0.22 shipped 478 lines covering every release
+          # back to 1.0. A Keep a Changelog file delimits entries with the
+          # next `## [` heading, which is what this matches.
           awk -v version="${VERSION}" '
             $0 ~ "^## \\[" version "\\]" { capture=1; next }
+            capture && /^## \[/ { exit }
             capture && /^---$/ { exit }
             capture { print }
           ' CHANGELOG.md > /tmp/release-notes.md

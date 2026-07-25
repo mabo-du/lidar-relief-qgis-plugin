@@ -5,6 +5,13 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+
+## [2.1.0] - 2026-07-25
+
+Minor release: two new Processing algorithms, semantic segmentation, radii in
+metres and provenance sidecars, plus repairs to three features that did not
+work at all. Horizon-scanning visualisations are roughly twice as fast.
+
 **Added**
 
 - **Visualisation Contact Sheet.** A new algorithm renders several
