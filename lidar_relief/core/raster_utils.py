@@ -31,6 +31,7 @@ agent:   claude-opus-5 | anthropic | 2026-07-25 | s_20260725_001 |
          silently yields ~90 deg slope everywhere"
 """
 
+import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -38,6 +39,8 @@ from typing import Optional
 
 import numpy as np
 from osgeo import gdal
+
+logger = logging.getLogger(__name__)
 
 # Suppress GDAL printing errors to stderr; we handle them ourselves.
 
@@ -166,8 +169,11 @@ def check_dem_geometry(dataset, feedback=None) -> list:
                     "to a projected CRS in metres (Raster > Projections > Warp) "
                     "before running this algorithm."
                 )
-        except Exception:  # pragma: no cover — osr should always import with gdal
-            pass
+        except Exception as exc:  # pragma: no cover — osr ships with gdal
+            # A CRS we cannot interpret is not a reason to abort the run;
+            # the geometry check is advisory. Log it rather than swallowing
+            # it silently, so an unreadable projection is still traceable.
+            logger.debug("Could not inspect CRS for geographic check: %s", exc)
     else:
         warnings.append(
             "Input DEM has no coordinate reference system. Results cannot be "

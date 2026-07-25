@@ -50,7 +50,6 @@ if "pytest" in sys.modules or "unittest" in sys.modules:
 
 import shutil
 import tempfile
-import xml.sax.saxutils
 from typing import Optional
 
 import numpy as np
@@ -464,7 +463,16 @@ def _write_points_vrt(xyz: np.ndarray, workdir: str) -> str:
 
     # The CSV path is interpolated into XML; escape it so unusual
     # characters in a temp path cannot produce malformed VRT.
-    escaped_csv = xml.sax.saxutils.escape(csv_path)
+    #
+    # saxutils is used only to ESCAPE text for a document we are
+    # constructing. Nothing here parses XML, so the untrusted-XML risks
+    # behind Bandit's B406 warning do not apply — the same reasoning as
+    # the documented B405 suppression in export/field_packager.py.
+    # Imported inside the function so the module-level import list stays
+    # free of blacklisted names.
+    from xml.sax.saxutils import escape  # nosec B406
+
+    escaped_csv = escape(csv_path)
     with open(vrt_path, "w", encoding="utf-8") as handle:
         handle.write(
             "<OGRVRTDataSource>\n"

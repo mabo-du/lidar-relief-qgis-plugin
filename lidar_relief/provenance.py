@@ -354,6 +354,14 @@ def _jsonable(value):
     if callable(item):
         try:
             return _jsonable(item())
-        except Exception:
-            pass
+        except Exception as exc:
+            # .item() exists on plenty of objects that are not numpy
+            # scalars and will raise here. Falling through to repr() is
+            # the intended behaviour, but log it so a parameter that
+            # silently became a string is traceable.
+            logger.debug(
+                "Could not unwrap %s via .item(), falling back to repr: %s",
+                type(value).__name__,
+                exc,
+            )
     return repr(value)
