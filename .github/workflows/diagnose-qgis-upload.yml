@@ -1,0 +1,76 @@
+name: Diagnose plugins.qgis.org upload
+
+# Manual only. The release workflow uses qgis-plugin-ci, which calls
+# response.raise_for_status() and then logs just the status line — so a
+# rejection arrives as a bare "HTTP Error 400" with no reason, and there is
+# no way to learn the cause from CI. v2.1.1 was refused three times that way.
+#
+# This runs the identical request through scripts/diagnose_qgis_upload.py,
+# which prints the response body.
+#
+# NOTE: this is a REAL upload, not a dry run — the registry offers no
+# validate-only endpoint. If the package is acceptable it will be published,
+# which is the desired outcome anyway.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to upload, e.g. 2.1.1 (its GitHub release asset is used)'
+        required: true
+        type: string
+      package_name:
+        description: 'Plugin slug on plugins.qgis.org'
+        required: false
+        default: 'lidar_relief'
+        type: string
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Download the release asset for this version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          PKG="${{ inputs.package_name }}"
+          gh release download "v${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${PKG}.${VERSION}.zip" \
+            --dir /tmp/diagnose
+          ls -la /tmp/diagnose
+
+      - name: Upload and print the server response
+        env:
+          QGIS_TOKEN: ${{ secrets.QGIS_TOKEN }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          PKG="${{ inputs.package_name }}"
+          python3 scripts/diagnose_qgis_upload.py \
+            "/tmp/diagnose/${PKG}.${VERSION}.zip" \
+            --package-name "${PKG}" \
+            | tee /tmp/diagnose-output.txt
+
+      - name: Publish the response to the run summary
+        if: always()
+        run: |
+          {
+            echo "## plugins.qgis.org upload diagnosis"
+            echo
+            echo '```'
+            cat /tmp/diagnose-output.txt 2>/dev/null || echo "(no output captured)"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
