@@ -10,7 +10,7 @@ jobs:
   security-and-qgis-compatibility:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install security scanner
         run: pip install bandit
@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container: qgis/qgis:final-3_34_2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Load plugin and execute a core algorithm without optional packages
         env:
@@ -59,10 +59,10 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     container: qgis/qgis:final-3_34_2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install test dependencies
         run: |
