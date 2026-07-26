@@ -38,9 +38,9 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 - Contextual-help onboarding now appears once by default instead of at every
   QGIS startup; repeated startup display remains an explicit preference.
-- Updated the optional ML/image stack to Pillow 12.3.0, ONNX 1.22.0, and
-  ONNX Runtime 1.27.0, with generated test models pinned to supported ONNX
-  opset 26.
+- Updated the optional ML/image stack to Pillow 12.3.0, ONNX 1.22.0, and the
+  Python-3.10-compatible ONNX Runtime 1.23.2, with generated test models pinned
+  to ONNX opset 23 for QGIS 3.34 compatibility.
 
 ### Fixed
 

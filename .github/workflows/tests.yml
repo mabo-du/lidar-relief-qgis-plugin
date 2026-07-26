@@ -140,7 +140,7 @@ jobs:
             rasterio rioxarray xarray reportlab laspy \
             rio-cogeo \
             "Pillow==12.3.0" \
-            "onnxruntime==1.27.0" "onnx==1.22.0"
+            "onnxruntime==1.23.2" "onnx==1.22.0"
           # Verify numpy stayed at 1.x — if a package upgraded it, fail
           # the job early with a clear message rather than failing later
           # with a confusing "numpy.dtype size changed" error.

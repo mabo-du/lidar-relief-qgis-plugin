@@ -38,7 +38,7 @@ def test_audit_manifest_is_exact_and_covers_direct_dependencies():
     }
     assert requirements["Pillow"] == "12.3.0"
     assert requirements["onnx"] == "1.22.0"
-    assert requirements["onnxruntime"] == "1.27.0"
+    assert requirements["onnxruntime"] == "1.23.2"
 
 
 def test_gdal_is_deliberately_qgis_managed():
@@ -63,6 +63,7 @@ def test_full_test_requirements_do_not_contain_literal_escaped_quotes():
     workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
     assert r"\"Pillow" not in workflow
     assert r"\"onnx" not in workflow
+    assert '"onnxruntime==1.23.2"' in workflow
 
 
 def test_verified_urllib_finding_has_narrow_semgrep_suppression():
