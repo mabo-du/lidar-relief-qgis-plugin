@@ -173,6 +173,8 @@ def main() -> int:
         with tempfile.TemporaryDirectory(prefix="lidar-relief-smoke-") as directory:
             input_path = Path(directory) / "input_dem.tif"
             output_path = Path(directory) / "tri.tif"
+            named_outputs = Path(directory) / "named"
+            recipe_path = Path(directory) / "resolved-recipe.json"
             create_smoke_dem(input_path)
             result = processing.run(
                 TRI_ALGORITHM_ID,
@@ -182,6 +184,40 @@ def main() -> int:
                 raise AssertionError("Processing returned an unexpected output path")
             validate_tri_output(output_path)
 
+            batch_result = processing.run(
+                "lidar_relief:batch_relief",
+                {
+                    "INPUT": str(input_path),
+                    "PRESET": 1,
+                    "RUN_HILLSHADE": False,
+                    "RUN_SLRM": False,
+                    "RUN_SVF": False,
+                    "RUN_SLOPE": True,
+                    "RUN_OPENNESS": False,
+                    "RUN_MSTP": False,
+                    "RUN_VAT": False,
+                    "RUN_RED_RELIEF": False,
+                    "RUN_LOCAL_DOMINANCE": False,
+                    "RUN_ASVF": False,
+                    "RUN_E4MSTP": False,
+                    "RUN_PCA": False,
+                    "OUTPUT_FOLDER": str(named_outputs),
+                    "OUTPUT_TEMPLATE": "{dem}_{method}_{preset}",
+                    "RECIPE_OUTPUT": str(recipe_path),
+                },
+            )
+            expected_named_output = (
+                named_outputs / "input_dem_slope_flat_agricultural.tif"
+            )
+            if Path(batch_result["SLOPE_OUTPUT"]) != expected_named_output:
+                raise AssertionError(
+                    "Batch naming template returned an unexpected path"
+                )
+            if not expected_named_output.is_file() or not recipe_path.is_file():
+                raise AssertionError(
+                    "Batch named output or resolved recipe was not created"
+                )
+
         plugin.unload()
         plugin = None
         if iface.actions:
@@ -189,7 +225,8 @@ def main() -> int:
 
         print(
             f"QGIS {Qgis.QGIS_VERSION}: plugin loaded, "
-            f"{len(algorithm_ids)} algorithms registered, TRI executed successfully"
+            f"{len(algorithm_ids)} algorithms registered, TRI and named Batch "
+            "Relief recipe workflows executed successfully"
         )
         return 0
     finally:

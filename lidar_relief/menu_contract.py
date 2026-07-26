@@ -27,6 +27,13 @@ ALGORITHM_SHORTCUTS = (
     ),
 )
 
+BATCH_PRESET_INDEX = {
+    "flat_agricultural": 1,
+    "forested": 2,
+    "upland_steep": 3,
+    "coastal": 4,
+}
+
 MENU_COMMAND_LABELS = (
     "Open LiDAR Relief Toolbox",
     "Inspect Active DEM…",
@@ -34,6 +41,13 @@ MENU_COMMAND_LABELS = (
     "Recent Recipe…",
     "Recent Output Folder…",
     "Remember Output Folder…",
+    "Favorite Tool or Recipe…",
+    "Manage Favorites…",
+    "Manage Recent Items…",
+    "Compare Raster Layers…",
+    "Record Interpretation Note…",
+    "Study Area Bookmarks…",
+    "Create Support Bundle…",
     "Open User Guide",
     "Contextual Help…",
 )

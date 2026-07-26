@@ -8,6 +8,9 @@ rules:
 
 from qgis.core import (
     QgsProcessingAlgorithm,
+    QgsProcessingException,
+    QgsProcessingParameterDefinition,
+    QgsProcessingParameterNumber,
     QgsProcessingParameterRasterLayer,
     QgsProcessingParameterRasterDestination,
 )
@@ -19,6 +22,7 @@ from ..core.openness import topographic_openness
 from ..core.local_dominance import compute_local_dominance
 from ..core.slope import compute_slope
 from ..core.mstp import compute_mstp
+from ..e4mstp_settings import E4MstpSettings
 from ..styling import ReliefLayerPostProcessor
 from .help_mixin import HelpUrlMixin
 
@@ -28,6 +32,16 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
     INPUT = "INPUT"
     OUTPUT = "OUTPUT"
+    OPENNESS_RADIUS = "OPENNESS_RADIUS"
+    NUM_DIRECTIONS = "NUM_DIRECTIONS"
+    LD_MIN_RADIUS = "LD_MIN_RADIUS"
+    LD_MAX_RADIUS = "LD_MAX_RADIUS"
+    LD_ANGULAR_RESOLUTION = "LD_ANGULAR_RESOLUTION"
+    LD_OBSERVER_HEIGHT = "LD_OBSERVER_HEIGHT"
+    MSTP_LOCAL_RADIUS = "MSTP_LOCAL_RADIUS"
+    MSTP_MESO_RADIUS = "MSTP_MESO_RADIUS"
+    MSTP_BROAD_RADIUS = "MSTP_BROAD_RADIUS"
+    TILE_SIZE = "TILE_SIZE"
 
     def name(self):
         return "e4mstp"
@@ -50,9 +64,9 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             "(SVF_S radius=10, SVF_L radius=50) internally as a multiply-blend "
             "modifier (step 3 of the 4-step composite). SVF is not a user-tunable "
             "parameter for this algorithm.\n\n"
-            "Sub-algorithm parameters (openness, LD, slope, MSTP radii) are "
-            "currently hardcoded to canonical values; user-tunable exposure is "
-            "planned for a future release."
+            "Advanced parameters expose openness, Local Dominance, MSTP, and "
+            "tile controls. Their defaults reproduce the canonical historical "
+            "e4MSTP output."
         )
 
     def createInstance(self):
@@ -71,10 +85,101 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
                 "e4MSTP output (RGB)",
             )
         )
+        defaults = E4MstpSettings()
+
+        def add_advanced(parameter):
+            parameter.setFlags(
+                parameter.flags() | QgsProcessingParameterDefinition.FlagAdvanced
+            )
+            self.addParameter(parameter)
+
+        controls = (
+            (self.OPENNESS_RADIUS, "Openness radius (px)", defaults.openness_radius),
+            (self.NUM_DIRECTIONS, "Openness directions", defaults.num_directions),
+            (self.LD_MIN_RADIUS, "LD minimum radius (px)", defaults.ld_min_radius),
+            (self.LD_MAX_RADIUS, "LD maximum radius (px)", defaults.ld_max_radius),
+            (
+                self.MSTP_LOCAL_RADIUS,
+                "MSTP local radius (px)",
+                defaults.mstp_local_radius,
+            ),
+            (
+                self.MSTP_MESO_RADIUS,
+                "MSTP meso radius (px)",
+                defaults.mstp_meso_radius,
+            ),
+            (
+                self.MSTP_BROAD_RADIUS,
+                "MSTP broad radius (px)",
+                defaults.mstp_broad_radius,
+            ),
+            (self.TILE_SIZE, "Tile size (px)", defaults.tile_size),
+        )
+        for name, label, default in controls:
+            add_advanced(
+                QgsProcessingParameterNumber(
+                    name,
+                    label,
+                    type=QgsProcessingParameterNumber.Type.Integer,
+                    defaultValue=default,
+                    minValue=1 if name != self.TILE_SIZE else 256,
+                )
+            )
+        for name, label, default in (
+            (
+                self.LD_ANGULAR_RESOLUTION,
+                "LD angular resolution (degrees)",
+                defaults.ld_angular_resolution,
+            ),
+            (
+                self.LD_OBSERVER_HEIGHT,
+                "LD observer height",
+                defaults.ld_observer_height,
+            ),
+        ):
+            add_advanced(
+                QgsProcessingParameterNumber(
+                    name,
+                    label,
+                    type=QgsProcessingParameterNumber.Type.Double,
+                    defaultValue=default,
+                    minValue=0.1,
+                )
+            )
 
     def processAlgorithm(self, parameters, context, feedback):
         source = self.parameterAsRasterLayer(parameters, self.INPUT, context)
         output_path = self.parameterAsOutputLayer(parameters, self.OUTPUT, context)
+        settings = E4MstpSettings(
+            openness_radius=self.parameterAsInt(
+                parameters, self.OPENNESS_RADIUS, context
+            ),
+            num_directions=self.parameterAsInt(
+                parameters, self.NUM_DIRECTIONS, context
+            ),
+            ld_min_radius=self.parameterAsInt(parameters, self.LD_MIN_RADIUS, context),
+            ld_max_radius=self.parameterAsInt(parameters, self.LD_MAX_RADIUS, context),
+            ld_angular_resolution=self.parameterAsDouble(
+                parameters, self.LD_ANGULAR_RESOLUTION, context
+            ),
+            ld_observer_height=self.parameterAsDouble(
+                parameters, self.LD_OBSERVER_HEIGHT, context
+            ),
+            mstp_local_radius=self.parameterAsInt(
+                parameters, self.MSTP_LOCAL_RADIUS, context
+            ),
+            mstp_meso_radius=self.parameterAsInt(
+                parameters, self.MSTP_MESO_RADIUS, context
+            ),
+            mstp_broad_radius=self.parameterAsInt(
+                parameters, self.MSTP_BROAD_RADIUS, context
+            ),
+            tile_size=self.parameterAsInt(parameters, self.TILE_SIZE, context),
+        )
+        try:
+            settings.validate()
+        except ValueError as exc:
+            raise QgsProcessingException(str(exc)) from exc
 
         feedback.setProgressText("Computing true e4MSTP (7 sub-metrics) in tiles...")
 
@@ -87,8 +192,8 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             open_pos_raw = topographic_openness(
                 block,
                 cellsize,
-                num_directions=16,
-                search_radius=10,
+                num_directions=settings.num_directions,
+                search_radius=settings.openness_radius,
                 is_negative=False,
                 feedback=feedback,
             )
@@ -98,8 +203,8 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             open_neg_raw = topographic_openness(
                 block,
                 cellsize,
-                num_directions=16,
-                search_radius=10,
+                num_directions=settings.num_directions,
+                search_radius=settings.openness_radius,
                 is_negative=True,
                 feedback=feedback,
             )
@@ -109,10 +214,10 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             ld_raw = compute_local_dominance(
                 block,
                 cellsize,
-                min_rad=10,
-                max_rad=20,
-                anglr_res=15.0,
-                observer_h=1.7,
+                min_rad=settings.ld_min_radius,
+                max_rad=settings.ld_max_radius,
+                anglr_res=settings.ld_angular_resolution,
+                observer_h=settings.ld_observer_height,
                 feedback=feedback,
             )
             local_dom = (ld_raw / 255.0).clip(0.0, 1.0)
@@ -125,9 +230,9 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             # Default MSTP radii: micro=3, meso=20, broad=100
             mstp = compute_mstp(
                 block,
-                local_r=3,
-                meso_r=20,
-                broad_r=100,
+                local_r=settings.mstp_local_radius,
+                meso_r=settings.mstp_meso_radius,
+                broad_r=settings.mstp_broad_radius,
                 feedback=feedback,
             )
             mstp_norm = mstp.astype(np.float32) / 255.0
@@ -143,14 +248,12 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
                 feedback=feedback,
             )
 
-        # Largest radius needed is 100 (from MSTP broad_r=100)
-        # Using a 1024 tile size keeps memory manageable during the heavy 7-algorithm stack.
         process_in_tiles(
             source_path=source.source(),
             output_path=output_path,
             algorithm_func=e4mstp_wrapper,
-            halo_size=100,
-            tile_size=1024,
+            halo_size=settings.halo_size,
+            tile_size=settings.tile_size,
             feedback=feedback,
         )
 

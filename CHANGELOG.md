@@ -19,6 +19,16 @@ All notable changes to LiDAR Relief Visualization are documented here.
   metric feature-scale starting radii.
 - Copy-friendly optional-dependency diagnostics covering GPU, CSF, PDAL, ONNX,
   COG, reports, temporal comparison, fusion, and labelled contact sheets.
+- One-click handoff from DEM preflight to the recommended Batch Relief preset,
+  favorite tools and recipes, and non-destructive recent-item management.
+- Optional Batch Relief output naming templates and reusable recipes containing
+  the successfully resolved run settings.
+- Synchronized two-raster comparison, structured GeoJSON or CSV interpretation
+  notes, and CRS-aware named study-area bookmarks.
+- Redacted support ZIP creation containing diagnostics and optional active-DEM
+  preflight information.
+- Advanced e4MSTP controls for openness, Local Dominance, MSTP scales, and tile
+  size, with defaults matching the previous canonical implementation.
 
 ### Changed
 

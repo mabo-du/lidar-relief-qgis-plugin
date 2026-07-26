@@ -21,12 +21,18 @@ from .context_help import (
     should_show_guidance,
     show_context_help,
 )
-from .menu_contract import ALGORITHM_SHORTCUTS
+from .menu_contract import ALGORITHM_SHORTCUTS, BATCH_PRESET_INDEX
 from .recent_items import (
+    favorite_algorithms,
+    favorite_recipes,
     recent_output_folders,
     recent_recipes,
+    clear_recent_output_folders,
+    clear_recent_recipes,
     record_output_folder,
     record_result_paths,
+    set_favorite_algorithms,
+    set_favorite_recipes,
 )
 
 
@@ -75,6 +81,18 @@ class LidarReliefPlugin:
             self._add_action("Recent Output Folder…", self.openRecentOutputFolder)
             self._add_action("Remember Output Folder…", self.rememberOutputFolder)
             self._add_separator()
+            self._add_action("Favorite Tool or Recipe…", self.openFavorite)
+            self._add_action("Manage Favorites…", self.manageFavorites)
+            self._add_action("Manage Recent Items…", self.manageRecentItems)
+            self._add_separator()
+            self._add_action("Compare Raster Layers…", self.compareRasters)
+            self._add_action(
+                "Record Interpretation Note…", self.recordInterpretationNote
+            )
+            self._add_separator()
+            self._add_action("Study Area Bookmarks…", self.manageStudyBookmarks)
+            self._add_action("Create Support Bundle…", self.createSupportBundle)
+            self._add_separator()
             self._add_action("Open User Guide", self.openUserGuide)
             self.context_help_action = self._add_action(
                 "Contextual Help…", self.showContextHelp
@@ -115,6 +133,11 @@ class LidarReliefPlugin:
         results = processing.execAlgorithmDialog(algorithm_id, parameters or {})
         if isinstance(results, dict):
             record_result_paths(results)
+            recipe_path = results.get("RECIPE_OUTPUT")
+            if recipe_path:
+                from .recent_items import record_recent_recipe
+
+                record_recent_recipe(recipe_path)
         return results
 
     def runAlgorithmShortcut(self, shortcut):
@@ -145,7 +168,7 @@ class LidarReliefPlugin:
         if not source:
             return None
         try:
-            next_action = show_dem_preflight(source, self._parent())
+            next_action, recommendation = show_dem_preflight(source, self._parent())
         except Exception as exc:
             show_error(self._parent(), "DEM preflight failed", exc)
             return None
@@ -154,10 +177,13 @@ class LidarReliefPlugin:
             "batch_relief": "lidar_relief:batch_relief",
         }
         if next_action in algorithm_ids:
+            tool_parameters = {"INPUT": source}
+            if next_action == "batch_relief":
+                preset_index = BATCH_PRESET_INDEX.get(recommendation.preset_key)
+                if preset_index is not None:
+                    tool_parameters["PRESET"] = preset_index
             try:
-                return self._run_algorithm(
-                    algorithm_ids[next_action], {"INPUT": source}
-                )
+                return self._run_algorithm(algorithm_ids[next_action], tool_parameters)
             except Exception as exc:
                 show_error(self._parent(), "Could not open Processing tool", exc)
         return None
@@ -198,6 +224,206 @@ class LidarReliefPlugin:
         if folder:
             record_output_folder(folder)
         return folder
+
+    def _available_algorithms(self):
+        if self.provider is None:
+            return []
+        return sorted(
+            (
+                (f"{self.provider.id()}:{algorithm.name()}", algorithm.displayName())
+                for algorithm in self.provider.algorithms()
+            ),
+            key=lambda item: item[1].casefold(),
+        )
+
+    def openFavorite(self):
+        from .plugin_ui import choose_favorite
+
+        labels = dict(self._available_algorithms())
+        tools = [(item, labels.get(item, item)) for item in favorite_algorithms()]
+        selected = choose_favorite(tools, favorite_recipes(), self._parent())
+        if not selected:
+            return None
+        kind, value = selected
+        if kind == "recipe":
+            return self._run_algorithm("lidar_relief:recipe_import", {"INPUT": value})
+        parameters = {}
+        source = self._active_dem()
+        if source:
+            parameters["INPUT"] = source
+        return self._run_algorithm(value, parameters)
+
+    def manageFavorites(self):
+        from .plugin_ui import manage_favorites_dialog
+
+        result = manage_favorites_dialog(
+            self._available_algorithms(),
+            recent_recipes(),
+            (favorite_algorithms(), favorite_recipes()),
+            self._parent(),
+        )
+        if result is not None:
+            set_favorite_algorithms(result[0])
+            set_favorite_recipes(result[1])
+        return result
+
+    def manageRecentItems(self):
+        from .plugin_ui import manage_recent_dialog
+
+        recipes = recent_recipes()
+        outputs = recent_output_folders()
+        result = manage_recent_dialog(recipes, outputs, self._parent())
+        if result is None:
+            return None
+        kept_recipes, kept_outputs = map(set, result)
+        clear_recent_recipes()
+        clear_recent_output_folders()
+        for recipe in reversed(recipes):
+            if recipe in kept_recipes:
+                from .recent_items import record_recent_recipe
+
+                record_recent_recipe(recipe)
+        for folder in reversed(outputs):
+            if folder in kept_outputs:
+                record_output_folder(folder)
+        return result
+
+    def compareRasters(self):
+        from .plugin_ui import show_raster_comparison
+
+        return show_raster_comparison(self.iface, self._parent())
+
+    def recordInterpretationNote(self):
+        from qgis.core import (
+            QgsCoordinateReferenceSystem,
+            QgsCoordinateTransform,
+            QgsProject,
+        )
+
+        from .interpretation_notes import (
+            create_interpretation_note,
+            write_interpretation_notes,
+        )
+        from .plugin_ui import (
+            choose_interpretation_output,
+            interpretation_note_dialog,
+            show_error,
+        )
+
+        active_layer = self.iface.activeLayer()
+        visualization = active_layer.name() if active_layer is not None else ""
+        values = interpretation_note_dialog(visualization, self._parent())
+        if values is None:
+            return None
+        output_path = choose_interpretation_output(self._parent())
+        if not output_path:
+            return None
+        try:
+            canvas = self.iface.mapCanvas()
+            transform = QgsCoordinateTransform(
+                canvas.mapSettings().destinationCrs(),
+                QgsCoordinateReferenceSystem("EPSG:4326"),
+                QgsProject.instance(),
+            )
+            point = transform.transform(canvas.center())
+            note = create_interpretation_note(
+                longitude=point.x(),
+                latitude=point.y(),
+                **values,
+            )
+            write_interpretation_notes([note], output_path)
+            record_output_folder(output_path)
+            return output_path
+        except Exception as exc:
+            show_error(self._parent(), "Could not save interpretation note", exc)
+            return None
+
+    def manageStudyBookmarks(self):
+        from qgis.core import (
+            QgsCoordinateReferenceSystem,
+            QgsRectangle,
+            QgsReferencedRectangle,
+        )
+
+        from .plugin_ui import show_error, study_bookmark_dialog
+        from .study_bookmarks import (
+            list_bookmarks,
+            remove_bookmark,
+            rename_bookmark,
+            save_bookmark,
+        )
+
+        bookmarks = list_bookmarks()
+        command = study_bookmark_dialog(bookmarks, self._parent())
+        if not command:
+            return None
+        try:
+            canvas = self.iface.mapCanvas()
+            if command[0] == "save":
+                extent = canvas.extent()
+                crs = canvas.mapSettings().destinationCrs()
+                save_bookmark(
+                    command[1],
+                    (
+                        extent.xMinimum(),
+                        extent.yMinimum(),
+                        extent.xMaximum(),
+                        extent.yMaximum(),
+                    ),
+                    crs.authid() or crs.toWkt(),
+                )
+            elif command[0] == "rename":
+                rename_bookmark(command[1], command[2])
+            elif command[0] == "remove":
+                remove_bookmark(command[1])
+            else:
+                bookmark = next(
+                    item for item in bookmarks if item["name"] == command[1]
+                )
+                crs = QgsCoordinateReferenceSystem(bookmark["crs"])
+                if not crs.isValid():
+                    crs.createFromWkt(bookmark["crs"])
+                canvas.setReferencedExtent(
+                    QgsReferencedRectangle(
+                        QgsRectangle(*bookmark["extent"]),
+                        crs,
+                    )
+                )
+                canvas.refresh()
+            return command
+        except Exception as exc:
+            show_error(self._parent(), "Study area bookmark failed", exc)
+            return None
+
+    def createSupportBundle(self):
+        from qgis.core import Qgis
+
+        from .dem_preflight import analyse_dem, format_preflight, recommend_workflow
+        from .diagnostics import format_diagnostics
+        from .plugin_ui import choose_support_bundle_output, show_error
+        from .support_bundle import create_support_bundle
+        from .version import get_version
+
+        output_path = choose_support_bundle_output(self._parent())
+        if not output_path:
+            return None
+        try:
+            preflight = ""
+            source = self._active_dem()
+            if source:
+                summary = analyse_dem(source)
+                preflight = format_preflight(summary, recommend_workflow(summary))
+            create_support_bundle(
+                output_path,
+                diagnostics=format_diagnostics(qgis_version=Qgis.QGIS_VERSION),
+                plugin_version=get_version(),
+                preflight=preflight,
+            )
+            record_output_folder(output_path)
+            return output_path
+        except Exception as exc:
+            show_error(self._parent(), "Support bundle failed", exc)
+            return None
 
     def openUserGuide(self):
         from .plugin_ui import open_local_path, show_error

@@ -8,6 +8,8 @@ from collections.abc import Iterable
 MAX_RECENT_ITEMS = 8
 SETTINGS_RECENT_RECIPES = "lidar_relief/recent/recipes"
 SETTINGS_RECENT_OUTPUTS = "lidar_relief/recent/output_folders"
+SETTINGS_FAVORITE_ALGORITHMS = "lidar_relief/favorites/algorithms"
+SETTINGS_FAVORITE_RECIPES = "lidar_relief/favorites/recipes"
 _PROCESSING_SENTINELS = {"", "TEMPORARY_OUTPUT", "memory:"}
 
 
@@ -88,6 +90,81 @@ def recent_output_folders(settings=None) -> list[str]:
     """Return existing recent output directories, newest first."""
     settings = _settings(settings)
     return _recent(SETTINGS_RECENT_OUTPUTS, settings, os.path.isdir)
+
+
+def _remove(path, key: str, settings=None) -> None:
+    settings = _settings(settings)
+    normalised = _normalise(path)
+    remaining = [
+        item
+        for item in _as_list(settings.value(key, []))
+        if _normalise(item) != normalised
+    ]
+    settings.setValue(key, remaining)
+
+
+def remove_recent_recipe(path, settings=None) -> None:
+    """Remove one recipe from history without deleting the file."""
+    _remove(path, SETTINGS_RECENT_RECIPES, settings)
+
+
+def remove_recent_output_folder(path, settings=None) -> None:
+    """Remove one output folder from history without deleting it."""
+    _remove(path, SETTINGS_RECENT_OUTPUTS, settings)
+
+
+def clear_recent_recipes(settings=None) -> None:
+    """Forget all recent recipes without deleting user files."""
+    _settings(settings).setValue(SETTINGS_RECENT_RECIPES, [])
+
+
+def clear_recent_output_folders(settings=None) -> None:
+    """Forget all recent output folders without deleting user files."""
+    _settings(settings).setValue(SETTINGS_RECENT_OUTPUTS, [])
+
+
+def _set_favorites(values, key: str, settings, validator) -> None:
+    found = []
+    for value in values:
+        normalised = _normalise(value) if validator is os.path.isfile else str(value)
+        if normalised and validator(normalised) and normalised not in found:
+            found.append(normalised)
+    settings.setValue(key, found[:MAX_RECENT_ITEMS])
+
+
+def set_favorite_algorithms(algorithm_ids, settings=None) -> None:
+    """Replace favorite Processing IDs with validated, unique values."""
+    settings = _settings(settings)
+    _set_favorites(
+        algorithm_ids,
+        SETTINGS_FAVORITE_ALGORITHMS,
+        settings,
+        lambda value: value.startswith("lidar_relief:"),
+    )
+
+
+def favorite_algorithms(settings=None) -> list[str]:
+    """Return saved LiDAR Relief Processing IDs."""
+    settings = _settings(settings)
+    values = _as_list(settings.value(SETTINGS_FAVORITE_ALGORITHMS, []))
+    valid = []
+    for value in values:
+        if value.startswith("lidar_relief:") and value not in valid:
+            valid.append(value)
+    valid = valid[:MAX_RECENT_ITEMS]
+    settings.setValue(SETTINGS_FAVORITE_ALGORITHMS, valid)
+    return valid
+
+
+def set_favorite_recipes(paths, settings=None) -> None:
+    """Replace favorite recipe paths with existing, unique files."""
+    settings = _settings(settings)
+    _set_favorites(paths, SETTINGS_FAVORITE_RECIPES, settings, os.path.isfile)
+
+
+def favorite_recipes(settings=None) -> list[str]:
+    """Return existing favorite recipe files."""
+    return _recent(SETTINGS_FAVORITE_RECIPES, _settings(settings), os.path.isfile)
 
 
 def _walk_values(value) -> Iterable:

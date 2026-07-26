@@ -10,11 +10,16 @@ rules:
 from qgis.core import (
     QgsProcessingAlgorithm,
     QgsProcessingParameterBoolean,
+    QgsProcessingParameterFileDestination,
+    QgsProcessingParameterFolderDestination,
     QgsProcessingParameterNumber,
     QgsProcessingParameterEnum,
     QgsProcessingParameterRasterDestination,
     QgsProcessingParameterRasterLayer,
+    QgsProcessingParameterString,
 )
+
+import os
 
 import numpy as np
 from ..core.raster_utils import get_cell_size_from_path, process_in_tiles
@@ -32,6 +37,8 @@ from ..core.local_dominance import compute_local_dominance
 from ..core.asvf import anisotropic_sky_view_factor
 from ..core.pca import compute_pca_composite
 from ..core.emstp import compute_e4mstp
+from ..version import get_version
+from ..workflow_features import batch_recipe_json, render_output_filename
 from .help_mixin import HelpUrlMixin
 
 
@@ -68,6 +75,9 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
     PCA_OUTPUT = "PCA_OUTPUT"
 
     TILE_SIZE = "TILE_SIZE"
+    OUTPUT_FOLDER = "OUTPUT_FOLDER"
+    OUTPUT_TEMPLATE = "OUTPUT_TEMPLATE"
+    RECIPE_OUTPUT = "RECIPE_OUTPUT"
 
     SVF_NUM_DIRECTIONS = "SVF_NUM_DIRECTIONS"
     OPENNESS_NUM_DIRECTIONS = "OPENNESS_NUM_DIRECTIONS"
@@ -141,6 +151,31 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
                 "SVF Directions",
                 type=QgsProcessingParameterNumber.Type.Integer,
                 defaultValue=16,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterFolderDestination(
+                self.OUTPUT_FOLDER,
+                "Optional named-output folder",
+                optional=True,
+                createByDefault=False,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterString(
+                self.OUTPUT_TEMPLATE,
+                "Output naming template",
+                defaultValue="{dem}_{method}",
+                optional=True,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterFileDestination(
+                self.RECIPE_OUTPUT,
+                "Optional saved recipe for this run",
+                fileFilter="LiDAR Relief recipe (*.json)",
+                optional=True,
+                createByDefault=False,
             )
         )
         self.addParameter(
@@ -504,6 +539,22 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
         done = 0
 
         source_path = source.source()
+        output_folder = self.parameterAsString(
+            parameters, self.OUTPUT_FOLDER, context
+        ).strip()
+        output_template = self.parameterAsString(
+            parameters, self.OUTPUT_TEMPLATE, context
+        ).strip()
+        if output_folder:
+            os.makedirs(output_folder, exist_ok=True)
+
+        def output_path(parameter_name, task_name):
+            if output_folder:
+                filename = render_output_filename(
+                    output_template, source_path, task_name, preset_key or "manual"
+                )
+                return os.path.join(output_folder, filename)
+            return self.parameterAsOutputLayer(parameters, parameter_name, context)
 
         def update_progress():
             nonlocal done
@@ -512,9 +563,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "hillshade" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing multi-directional hillshade...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.HILLSHADE_OUTPUT, context
-            )
+            out_path = output_path(self.HILLSHADE_OUTPUT, "hillshade")
             process_in_tiles(
                 source_path=source_path,
                 output_path=out_path,
@@ -530,9 +579,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "slrm" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Simple Local Relief Model...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.SLRM_OUTPUT, context
-            )
+            out_path = output_path(self.SLRM_OUTPUT, "slrm")
 
             def slrm_wrapper(block, cellsize, radius):
                 return simple_local_relief_model(block, radius)
@@ -551,7 +598,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "svf" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Sky-View Factor...")
-            out_path = self.parameterAsOutputLayer(parameters, self.SVF_OUTPUT, context)
+            out_path = output_path(self.SVF_OUTPUT, "svf")
             process_in_tiles(
                 source_path=source_path,
                 output_path=out_path,
@@ -568,9 +615,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "slope" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Slope...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.SLOPE_OUTPUT, context
-            )
+            out_path = output_path(self.SLOPE_OUTPUT, "slope")
             process_in_tiles(
                 source_path=source_path,
                 output_path=out_path,
@@ -585,9 +630,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "openness" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Positive Openness...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.OPENNESS_OUTPUT, context
-            )
+            out_path = output_path(self.OPENNESS_OUTPUT, "openness")
             process_in_tiles(
                 source_path=source_path,
                 output_path=out_path,
@@ -604,9 +647,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "mstp" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing MSTP...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.MSTP_OUTPUT, context
-            )
+            out_path = output_path(self.MSTP_OUTPUT, "mstp")
 
             def mstp_wrapper(block, cellsize, local_r, meso_r, broad_r, lightness):
                 return multi_scale_topographic_position(
@@ -630,7 +671,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "vat" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing VAT Composite...")
-            out_path = self.parameterAsOutputLayer(parameters, self.VAT_OUTPUT, context)
+            out_path = output_path(self.VAT_OUTPUT, "vat")
 
             def vat_wrapper(block, cellsize, svf_radius, openness_radius):
                 return compute_vat(
@@ -652,9 +693,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "red_relief" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Simple Red Relief...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.RED_RELIEF_OUTPUT, context
-            )
+            out_path = output_path(self.RED_RELIEF_OUTPUT, "red_relief")
 
             def red_relief_wrapper(block, cellsize, slrm_radius):
                 return simple_red_relief(block, cellsize, slrm_radius, feedback)
@@ -673,9 +712,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "local_dominance" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing Local Dominance...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.LOCAL_DOMINANCE_OUTPUT, context
-            )
+            out_path = output_path(self.LOCAL_DOMINANCE_OUTPUT, "local_dominance")
 
             def ld_wrapper(block, cellsize):
                 return compute_local_dominance(
@@ -700,9 +737,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "asvf" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing ASVF...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.ASVF_OUTPUT, context
-            )
+            out_path = output_path(self.ASVF_OUTPUT, "asvf")
 
             def asvf_wrapper(block, cellsize, radius):
                 return anisotropic_sky_view_factor(
@@ -730,9 +765,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "e4mstp" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing e4MSTP...")
-            out_path = self.parameterAsOutputLayer(
-                parameters, self.E4MSTP_OUTPUT, context
-            )
+            out_path = output_path(self.E4MSTP_OUTPUT, "e4mstp")
 
             def e4mstp_wrapper(block, cellsize):
                 open_pos_raw = topographic_openness(
@@ -799,7 +832,7 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         if "pca" in tasks and not feedback.isCanceled():
             feedback.setProgressText("Batch: Computing PCA...")
-            out_path = self.parameterAsOutputLayer(parameters, self.PCA_OUTPUT, context)
+            out_path = output_path(self.PCA_OUTPUT, "pca")
 
             def pca_wrapper(block, cellsize):
                 svf = sky_view_factor(
@@ -841,5 +874,22 @@ class BatchAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
             )
             dict_results[self.PCA_OUTPUT] = out_path
             update_progress()
+
+        recipe_path = self.parameterAsFileOutput(
+            parameters, self.RECIPE_OUTPUT, context
+        )
+        if recipe_path and not feedback.isCanceled():
+            content = batch_recipe_json(
+                tasks,
+                p_cfg,
+                preset_key,
+                get_version(),
+                source_path,
+            )
+            with open(recipe_path, "w", encoding="utf-8") as recipe_file:
+                recipe_file.write(content)
+                recipe_file.write("\n")
+            dict_results[self.RECIPE_OUTPUT] = recipe_path
+            feedback.pushInfo(f"Saved reusable recipe: {recipe_path}")
 
         return dict_results

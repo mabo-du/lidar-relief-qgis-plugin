@@ -73,6 +73,16 @@ The **Plugins → LiDAR Relief** menu collects the best starting workflows:
 - **Recent Recipe…** reopens successfully imported or exported recipes.
 - **Recent Output Folder…** opens output locations returned by menu-launched
   workflows. **Remember Output Folder…** adds any other working folder.
+- **Favorite Tool or Recipe…** opens a saved favorite. **Manage Favorites…**
+  selects tools and recent recipes to pin, while **Manage Recent Items…**
+  removes history entries without deleting the files themselves.
+- **Compare Raster Layers…** opens two loaded rasters in synchronized,
+  non-destructive map views.
+- **Record Interpretation Note…** records the map-centre location with a title,
+  interpretation, confidence, and visualization as WGS84 GeoJSON or CSV.
+- **Study Area Bookmarks…** saves and restores named extents together with
+  their CRS. **Create Support Bundle…** writes redacted diagnostics and, when
+  a DEM is active, its preflight report to a ZIP suitable for a bug report.
 - **Open User Guide** opens this complete guide.
 
 Preflight recommendations are conservative visualisation starting points. A
@@ -401,6 +411,18 @@ pass. Choose from 4 research-validated terrain presets or use manual settings:
 Preset distances are defined in **metres** and converted using your DEM's cell
 size, so a preset means the same real-world thing at any resolution. The log
 reports the converted pixel values at the start of each run.
+
+Set **Optional named-output folder** to create a complete, consistently named
+result set. The template accepts `{dem}`, `{method}`, `{preset}`, and `{date}`;
+for example, `{dem}_{method}_{date}`. Folder separators and unknown fields are
+rejected. Set **Optional saved recipe for this run** to preserve the resolved
+settings after a successful run, including pixel values calculated from a
+metre-based preset.
+
+The e4MSTP dialog also exposes its component scales under QGIS's advanced
+parameters. Leaving them unchanged reproduces the canonical implementation:
+openness radius 10, Local Dominance radii 10–20, MSTP radii 3–20–100, and tile
+size 1024 pixels.
 
 > Before v2.1 these distances were stored as pixel counts, which made the
 > presets correct only on a 1 m DEM — on 0.25 m LiDAR every preset radius was

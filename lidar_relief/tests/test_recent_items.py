@@ -1,10 +1,18 @@
 from lidar_relief.recent_items import (
     MAX_RECENT_ITEMS,
+    clear_recent_output_folders,
+    clear_recent_recipes,
+    favorite_algorithms,
+    favorite_recipes,
     recent_output_folders,
     recent_recipes,
+    remove_recent_output_folder,
+    remove_recent_recipe,
     record_output_folder,
     record_recent_recipe,
     record_result_paths,
+    set_favorite_algorithms,
+    set_favorite_recipes,
 )
 
 
@@ -76,3 +84,44 @@ def test_history_ignores_processing_sentinels():
     settings = FakeSettings()
     record_result_paths({"OUTPUT": "TEMPORARY_OUTPUT"}, settings)
     assert recent_output_folders(settings) == []
+
+
+def test_recent_items_can_be_removed_or_cleared(tmp_path):
+    settings = FakeSettings()
+    recipe = tmp_path / "recipe.json"
+    recipe.write_text("{}", encoding="utf-8")
+    output = tmp_path / "outputs"
+    output.mkdir()
+    record_recent_recipe(recipe, settings)
+    record_output_folder(output, settings)
+
+    remove_recent_recipe(recipe, settings)
+    remove_recent_output_folder(output, settings)
+    assert recent_recipes(settings) == []
+    assert recent_output_folders(settings) == []
+
+    record_recent_recipe(recipe, settings)
+    record_output_folder(output, settings)
+    clear_recent_recipes(settings)
+    clear_recent_output_folders(settings)
+    assert recent_recipes(settings) == []
+    assert recent_output_folders(settings) == []
+
+
+def test_favorites_are_deduplicated_bounded_and_validated(tmp_path):
+    settings = FakeSettings()
+    recipe = tmp_path / "favorite.json"
+    recipe.write_text("{}", encoding="utf-8")
+    missing = tmp_path / "missing.json"
+
+    set_favorite_algorithms(
+        ["lidar_relief:svf", "", "lidar_relief:svf", "lidar_relief:slrm"],
+        settings,
+    )
+    set_favorite_recipes([missing, recipe, recipe], settings)
+
+    assert favorite_algorithms(settings) == [
+        "lidar_relief:svf",
+        "lidar_relief:slrm",
+    ]
+    assert favorite_recipes(settings) == [str(recipe.resolve())]
