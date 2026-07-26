@@ -2,10 +2,10 @@
   <img src="docs/brand/project-lockup.svg" alt="Dig:Tools" width="720">
 </p>
 
-# LiDAR Relief Visualization Plugin — v2.1
+# LiDAR Relief Visualization Plugin — v2.2
 
 [![QGIS Plugin](https://img.shields.io/badge/QGIS-3%20%7C%204-589632?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/lidar_relief/)
-[![Version](https://img.shields.io/badge/release-2.1.2-C28B22)](https://github.com/dig-tools/lidar-relief-qgis-plugin/releases)
+[![Version](https://img.shields.io/badge/release-2.2.0-C28B22)](https://github.com/dig-tools/lidar-relief-qgis-plugin/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml/badge.svg)](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml)
 
@@ -33,6 +33,8 @@ visual aid, not an archaeological classification.*
 
 ## Quick start
 
+![Actual QGIS LiDAR Relief menu over a synthetic DEM](lidar_relief/docs/images/qgis/qgis-plugin-menu.png)
+
 1. Install **LiDAR Relief Visualization** from QGIS Plugin Manager.
 2. Load a projected DEM whose horizontal and vertical units are metres. If you
    load a geographic (lat/lon) DEM, or one with non-square pixels, the plugin
@@ -50,6 +52,15 @@ The **Plugins → LiDAR Relief** menu also provides DEM preflight guidance,
 favorite tools and recipes, recent outputs, synchronized raster comparison,
 interpretation notes, study-area bookmarks, dependency diagnostics, and a
 redacted support bundle.
+
+The packaged [User Guide](lidar_relief/USER_GUIDE.md) now provides a real QGIS
+screenshot and step-by-step instructions for every Processing feature, plus
+the plugin-menu workflows. A good first run is **Inspect Active DEM…**, followed
+by **Visualisation Contact Sheet**:
+
+| DEM preflight | Batch survey |
+|---|---|
+| ![Actual QGIS DEM preflight](lidar_relief/docs/images/qgis/workflow-dem-preflight.png) | ![Actual QGIS Batch Relief dialog](lidar_relief/docs/images/qgis/algorithm-batch-relief.png) |
 
 ## Features
 
@@ -275,10 +286,14 @@ inside the official QGIS container on every change.
 ### Documentation image policy
 
 Documentation must not present mockups or AI-generated imagery as plugin
-output. The only raster figure currently used in this README and the shipped
-guide is generated from a deterministic synthetic DEM by the current plugin
-core. Its PNG metadata records the generator, and automated tests verify the
-file, provenance fields, and every local Markdown image reference.
+output. Dialog and workflow images are **actual QGIS screenshots**, not
+mockups, captured against a deterministic synthetic DEM by
+`scripts/capture_qgis_documentation.py`. Their QGIS/plugin versions and
+provenance are recorded in
+[`screenshot-manifest.json`](lidar_relief/docs/images/screenshot-manifest.json).
+The vivid TRI figure is calculated directly by the current plugin core and
+records its generator in PNG metadata. Automated tests verify provenance,
+feature coverage, and every local Markdown image reference.
 
 ## Architecture
 

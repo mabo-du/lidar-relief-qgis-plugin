@@ -5,7 +5,9 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
-### Added
+## [2.2.0] - 2026-07-27
+
+**Added**
 
 - Native contextual help for every processing parameter, including practical
   guidance on units, scale, performance, and safe starting values.
@@ -33,8 +35,12 @@ All notable changes to LiDAR Relief Visualization are documented here.
   current core algorithm, embedded provenance metadata, committed its
   deterministic generator, and added checks for every local documentation
   image reference.
+- Added an actual-QGIS screenshot and detailed first-run procedure for every
+  Processing feature, illustrated guides for the plugin-menu workflows, a
+  reproducible QGIS screenshot capture script and provenance manifest, and a
+  version-controlled GitHub Wiki landing page.
 
-### Changed
+**Changed**
 
 - Contextual-help onboarding now appears once by default instead of at every
   QGIS startup; repeated startup display remains an explicit preference.
@@ -42,13 +48,13 @@ All notable changes to LiDAR Relief Visualization are documented here.
   Python-3.10-compatible ONNX Runtime 1.23.2, with generated test models pinned
   to ONNX opset 23 for QGIS 3.34 compatibility.
 
-### Fixed
+**Fixed**
 
 - Corrected CI dependency quoting, kept documentation provenance checks free of
   optional Pillow imports, and configured the direct-dependency audit to avoid
   resolving intentionally independent QGIS package pins.
 
-### Security
+**Security**
 
 - Added a pinned direct-dependency audit inventory and automated Semgrep and
   pip-audit checks for pull requests, pushes, manual runs, and a weekly
