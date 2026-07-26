@@ -29,6 +29,10 @@ All notable changes to LiDAR Relief Visualization are documented here.
   preflight information.
 - Advanced e4MSTP controls for openness, Local Dominance, MSTP scales, and tile
   size, with defaults matching the previous canonical implementation.
+- Regenerated the documentation's synthetic TRI figure directly from the
+  current core algorithm, embedded provenance metadata, committed its
+  deterministic generator, and added checks for every local documentation
+  image reference.
 
 ### Changed
 

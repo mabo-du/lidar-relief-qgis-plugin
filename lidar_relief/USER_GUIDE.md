@@ -89,11 +89,14 @@ Preflight recommendations are conservative visualisation starting points. A
 bare-earth DEM cannot determine land cover or prove that a feature is
 archaeological; compare complementary outputs and independent evidence.
 
-![TRI applied to a labelled synthetic archaeological landscape](docs/images/tri-synthetic-example.png)
+![Verified TRI output from a labelled synthetic archaeological landscape](docs/images/tri-synthetic-example.png)
 
-*The synthetic example demonstrates algorithm response under controlled
-conditions. Real anomalies require contextual interpretation and, where
-appropriate, field validation.*
+*This is verified output rather than a mockup or QGIS screenshot. The
+deterministic DEM is shown on the left; the right panel is calculated directly
+by the plugin's current `compute_ruggedness` implementation. The vivid colour
+ramps style the unchanged values for readability. The committed generator is
+`scripts/generate_tri_documentation_image.py`. Real anomalies still require
+contextual interpretation and, where appropriate, field validation.*
 
 ---
 
@@ -477,6 +480,16 @@ size 1024 pixels.
 | Contact sheet panel captions | `Pillow` | `pip install Pillow` |
 
 ## Getting help and reporting problems
+
+Use **Plugins → LiDAR Relief → Create Support Bundle…** to create a redacted ZIP
+containing plugin/QGIS diagnostics and, when a DEM is active, its preflight
+report. Review the ZIP before attaching it to an issue; common secret
+assignments and the current home-directory prefix are masked automatically.
+
+Documentation images follow a strict provenance rule: mockups and AI-generated
+imagery are not presented as plugin output. The guide's TRI figure is generated
+directly from the tested core algorithm, carries generator metadata, and is
+checked by the automated test suite.
 
 When reporting an issue, include your operating system, QGIS version, plugin
 version, the full Processing log, input CRS and raster resolution, and the

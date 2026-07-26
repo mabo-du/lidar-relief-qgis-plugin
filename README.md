@@ -2,10 +2,10 @@
   <img src="docs/brand/project-lockup.svg" alt="Dig:Tools" width="720">
 </p>
 
-# LiDAR Relief Visualization Plugin — v2.0
+# LiDAR Relief Visualization Plugin — v2.1
 
 [![QGIS Plugin](https://img.shields.io/badge/QGIS-3%20%7C%204-589632?logo=qgis&logoColor=white)](https://plugins.qgis.org/plugins/lidar_relief/)
-[![Version](https://img.shields.io/badge/release-2.0.22-C28B22)](https://github.com/dig-tools/lidar-relief-qgis-plugin/releases)
+[![Version](https://img.shields.io/badge/release-2.1.2-C28B22)](https://github.com/dig-tools/lidar-relief-qgis-plugin/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml/badge.svg)](https://github.com/dig-tools/lidar-relief-qgis-plugin/actions/workflows/tests.yml)
 
@@ -21,11 +21,15 @@ explained, with guidance on choosing between them. The guide also ships inside
 the plugin, and every algorithm dialog in QGIS has a **Help** button that opens
 it at the relevant section.
 
-![Synthetic DEM and Terrain Ruggedness Index result](docs/images/tri-synthetic-example.png)
+![Synthetic DEM and Terrain Ruggedness Index result](lidar_relief/docs/images/tri-synthetic-example.png)
 
-*A reproducible synthetic example showing how TRI responds to a mound, ring
-ditch, sinuous bank, and ridge-and-furrow. It is a visual aid, not an
-archaeological classification.*
+*Verified algorithm output, not a mocked result or a QGIS screenshot. The
+left panel is a deterministic synthetic DEM and the right panel is calculated
+directly by the plugin's current `compute_ruggedness` implementation. The vivid
+`terrain` and `magma` colour ramps are presentation styling; the TRI values are
+unaltered. Rebuild it with
+`python scripts/generate_tri_documentation_image.py`. It remains a controlled
+visual aid, not an archaeological classification.*
 
 ## Quick start
 
@@ -41,6 +45,11 @@ archaeological classification.*
    elevation contrast.
 5. Compare multiple visualizations and validate potential features against
    complementary evidence before interpretation.
+
+The **Plugins → LiDAR Relief** menu also provides DEM preflight guidance,
+favorite tools and recipes, recent outputs, synchronized raster comparison,
+interpretation notes, study-area bookmarks, dependency diagnostics, and a
+redacted support bundle.
 
 ## Features
 
@@ -105,7 +114,12 @@ real-world size, and a 20 px radius means 20 m on a 1 m DEM but only 5 m on
 - **PDF Report Generator**: CIfA-compliant PDF reports with full parameter
   provenance, statistics, histogram, and certification.
 - **Visualization Recipes**: Share algorithm parameters as JSON files —
-  community-driven preset sharing beyond the 4 built-in presets.
+  community-driven preset sharing beyond the 4 built-in presets. Batch Relief
+  can save the successfully resolved settings from a run as a recipe.
+- **Named Batch Outputs**: Create a complete output set using safe templates
+  built from the DEM, method, preset, and run date.
+- **Interpretation Notes**: Record a map-centre observation, confidence, and
+  active visualization as WGS84 GeoJSON or CSV.
 - **Provenance Sidecars**: Every terrain output is written with a
   `<output>.lidar-relief.json` recording the plugin version, algorithm, exact
   parameters, source path, source checksum, CRS and cell size. The **Inspect
@@ -129,6 +143,11 @@ real-world size, and a 20 px radius means 20 m on a 1 m DEM but only 5 m on
 - **Multi-Sensor Fusion**: Co-register Sentinel-2 multispectral bands with
   LiDAR relief. Four fusion recipes combining topographic and spectral data
   (Terrain+CIR, Crop Marks, Erosion Risk, Bare Earth Composite).
+- **Synchronized Raster Comparison**: Review two loaded rasters side by side
+  with linked pan and zoom, without changing their source data.
+- **Study-Area Bookmarks**: Save and restore named map extents with their CRS.
+- **Advanced e4MSTP Controls**: Tune openness, Local Dominance, MSTP scales,
+  and tile size while canonical defaults preserve previous output.
 
 ### AI and machine learning
 
@@ -180,7 +199,7 @@ Copy or symlink the `lidar_relief` directory into your QGIS plugins folder:
 
 ### Optional Dependencies
 
-Most v2.0 features work with QGIS's built-in libraries. Optional features
+Most features work with QGIS's built-in libraries. Optional features
 require additional Python packages installed via the OSGeo4W Shell:
 
 | Feature | Package | Install command |
@@ -249,8 +268,17 @@ must remain aligned with the version and native bindings supplied by QGIS.
 
 The repository includes `scripts/qgis_smoke_test.py`, which loads the plugin
 in a headless QGIS session, verifies all algorithms are registered, executes
-TRI against a synthetic DEM, validates the result, and unloads cleanly. CI runs
-this test inside the official QGIS container on every change.
+TRI against a synthetic DEM, exercises named Batch Relief output and resolved
+recipe export, validates the results, and unloads cleanly. CI runs this test
+inside the official QGIS container on every change.
+
+### Documentation image policy
+
+Documentation must not present mockups or AI-generated imagery as plugin
+output. The only raster figure currently used in this README and the shipped
+guide is generated from a deterministic synthetic DEM by the current plugin
+core. Its PNG metadata records the generator, and automated tests verify the
+file, provenance fields, and every local Markdown image reference.
 
 ## Architecture
 
