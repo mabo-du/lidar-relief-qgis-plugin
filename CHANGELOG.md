@@ -5,6 +5,26 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Native contextual help for every processing parameter, including practical
+  guidance on units, scale, performance, and safe starting values.
+- An optional, dismissible contextual-help introduction that can be reopened
+  from the LiDAR Relief plugin menu and remembers its startup preference.
+- A complete LiDAR Relief menu with native shortcuts to the Processing toolbox,
+  Contact Sheet, Batch Relief, recipe import, the user guide, contextual help,
+  recent recipes, and recent output folders.
+- DEM preflight reporting for CRS, resolution, dimensions, extent, sampled
+  elevation and nodata statistics, memory guidance, terrain-form presets, and
+  metric feature-scale starting radii.
+- Copy-friendly optional-dependency diagnostics covering GPU, CSF, PDAL, ONNX,
+  COG, reports, temporal comparison, fusion, and labelled contact sheets.
+
+### Changed
+
+- Contextual-help onboarding now appears once by default instead of at every
+  QGIS startup; repeated startup display remains an explicit preference.
+
 
 ## [2.1.2] - 2026-07-25
 

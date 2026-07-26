@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 from osgeo import gdal, osr
 from qgis.core import QgsApplication, Qgis
+from qgis.PyQt.QtCore import QSettings
+from qgis.PyQt.QtWidgets import QMainWindow
 
 
 # Must match the addAlgorithm() calls in lidar_relief/provider.py, and the
@@ -20,6 +22,26 @@ from qgis.core import QgsApplication, Qgis
 # provider down) as well as one added without updating the user-facing docs.
 EXPECTED_ALGORITHM_COUNT = 31
 TRI_ALGORITHM_ID = "lidar_relief:terrain_ruggedness_index"
+
+
+class SmokeIface:
+    """Small QgisInterface stand-in for plugin menu lifecycle checks."""
+
+    def __init__(self):
+        self.window = QMainWindow()
+        self.actions = []
+
+    def mainWindow(self):
+        return self.window
+
+    def addPluginToMenu(self, _menu, action):
+        self.actions.append(action)
+
+    def removePluginMenu(self, _menu, action):
+        self.actions.remove(action)
+
+    def activeLayer(self):
+        return None
 
 
 def create_smoke_dem(path: Path) -> None:
@@ -68,9 +90,33 @@ def main() -> int:
 
         Processing.initialize()
         import lidar_relief
+        from lidar_relief.context_help import (
+            SETTINGS_GUIDANCE_SEEN,
+            SETTINGS_SHOW_GUIDANCE,
+        )
+        from lidar_relief.menu_contract import (
+            ALGORITHM_SHORTCUTS,
+            MENU_COMMAND_LABELS,
+        )
 
-        plugin = lidar_relief.classFactory(None)
+        settings = QSettings()
+        settings.setValue(SETTINGS_GUIDANCE_SEEN, True)
+        settings.setValue(SETTINGS_SHOW_GUIDANCE, False)
+        iface = SmokeIface()
+        plugin = lidar_relief.classFactory(iface)
         plugin.initGui()
+        action_labels = {
+            action.text() for action in iface.actions if not action.isSeparator()
+        }
+        expected_labels = {
+            *(shortcut.label for shortcut in ALGORITHM_SHORTCUTS),
+            *MENU_COMMAND_LABELS,
+        }
+        if action_labels != expected_labels:
+            raise AssertionError(
+                f"plugin menu mismatch: expected {sorted(expected_labels)}, "
+                f"found {sorted(action_labels)}"
+            )
         provider = QgsApplication.processingRegistry().providerById("lidar_relief")
         if provider is None:
             raise AssertionError("LiDAR Relief Processing provider was not registered")
@@ -98,6 +144,21 @@ def main() -> int:
                 f"{len(without_help)} algorithms have no help URL: {without_help}"
             )
 
+        # QGIS must receive parameter-level help through the live SIP objects.
+        # This catches an MRO/signature mismatch that pure-Python mixin tests
+        # cannot reproduce.
+        parameters_without_help = sorted(
+            f"{algorithm.id()}:{parameter.name()}"
+            for algorithm in provider.algorithms()
+            for parameter in algorithm.parameterDefinitions()
+            if not parameter.help()
+        )
+        if parameters_without_help:
+            raise AssertionError(
+                f"{len(parameters_without_help)} parameters have no contextual "
+                f"help: {parameters_without_help}"
+            )
+
         # The guide those URLs point at has to be inside the installed
         # plugin, not merely in the source repository.
         guide = Path(lidar_relief.__file__).parent / "USER_GUIDE.md"
@@ -120,6 +181,11 @@ def main() -> int:
             if Path(result["OUTPUT"]) != output_path:
                 raise AssertionError("Processing returned an unexpected output path")
             validate_tri_output(output_path)
+
+        plugin.unload()
+        plugin = None
+        if iface.actions:
+            raise AssertionError("plugin menu actions were not removed during unload")
 
         print(
             f"QGIS {Qgis.QGIS_VERSION}: plugin loaded, "

@@ -29,16 +29,55 @@ how it was made.
    (latitude/longitude) CRS or has non-square pixels, both of which make
    distance-based results meaningless.
 3. Open **Processing Toolbox → LiDAR Relief**.
-4. Not sure which visualization suits your landscape? Run **Visualisation
+4. Hover over or use QGIS's contextual-help control for any setting to see a
+   plain-language explanation and practical starting guidance.
+5. Not sure which visualization suits your landscape? Run **Visualisation
    Contact Sheet** first. It renders several techniques over the same ground
    as one labelled image in a few seconds.
-5. For an initial survey, run **Batch Relief Visualisation** with the landscape
+6. For an initial survey, run **Batch Relief Visualisation** with the landscape
    preset closest to your study area.
-6. Inspect several complementary outputs. No single visualization or automated
+7. Inspect several complementary outputs. No single visualization or automated
    detection should be treated as an archaeological classification.
-7. Record the input dataset, CRS, resolution, parameters, plugin version, and
+8. Record the input dataset, CRS, resolution, parameters, plugin version, and
    outputs. Provenance sidecars now capture most of this automatically;
    Visualization Recipes and PDF reports also assist reproducibility.
+
+### Contextual parameter help
+
+Every LiDAR Relief processing setting includes contextual help covering what it
+changes, expected units, and practical considerations such as scale,
+performance, or safe starting values. Depending on your QGIS version, this help
+may appear beside the setting as a `?`, in a tooltip, or in the processing
+dialog's help panel.
+
+An optional short introduction explains where to find this help the first time
+the plugin starts. Select **Show this introduction again when QGIS starts** if
+you want it repeated. You can reopen it at any time from **Plugins → LiDAR
+Relief → Contextual Help…**. The processing dialog's **Help** button still
+opens the complete algorithm guide.
+
+### LiDAR Relief menu
+
+The **Plugins → LiDAR Relief** menu collects the best starting workflows:
+
+- **Open LiDAR Relief Toolbox** opens QGIS's Processing toolbox.
+- **Create Visualisation Contact Sheet…** and **Run Batch Relief
+  Visualisation…** open native Processing dialogs and prefill the active DEM
+  when possible.
+- **Inspect Active DEM…** reports CRS, resolution, dimensions, coverage,
+  sampled elevation and nodata statistics, approximate memory, and practical
+  starting scales. If no local raster is active, it asks you to choose one.
+- **Dependency Diagnostics…** reports which optional GPU, point-cloud, AI,
+  export, temporal, and fusion capabilities are available. Use **Copy** to
+  include the report in a support request.
+- **Recent Recipe…** reopens successfully imported or exported recipes.
+- **Recent Output Folder…** opens output locations returned by menu-launched
+  workflows. **Remember Output Folder…** adds any other working folder.
+- **Open User Guide** opens this complete guide.
+
+Preflight recommendations are conservative visualisation starting points. A
+bare-earth DEM cannot determine land cover or prove that a feature is
+archaeological; compare complementary outputs and independent evidence.
 
 ![TRI applied to a labelled synthetic archaeological landscape](docs/images/tri-synthetic-example.png)
 

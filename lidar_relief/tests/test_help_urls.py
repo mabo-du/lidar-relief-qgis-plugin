@@ -26,7 +26,12 @@ GUIDE_PATH = os.path.join(
 )
 
 # Modules in algorithms/ that are not themselves algorithms.
-NON_ALGORITHM_MODULES = {"__init__.py", "help_mixin.py", "provenance_mixin.py"}
+NON_ALGORITHM_MODULES = {
+    "__init__.py",
+    "help_mixin.py",
+    "parameter_help.py",
+    "provenance_mixin.py",
+}
 
 
 def _algorithm_sources():

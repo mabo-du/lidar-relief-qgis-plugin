@@ -17,6 +17,7 @@ from qgis.core import (
 )
 
 from ..recipes import export_recipe, import_recipe, validate_recipe
+from ..recent_items import record_recent_recipe
 from ..version import get_version
 from .help_mixin import HelpUrlMixin
 
@@ -133,6 +134,7 @@ class RecipeExportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(recipe_json)
 
+        record_recent_recipe(output_path)
         return {self.OUTPUT: output_path}
 
 
@@ -213,6 +215,7 @@ class RecipeImportAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
         }
         meta_json = json.dumps(meta, indent=2)
 
+        record_recent_recipe(file_path)
         return {
             self.OUTPUT_PARAMETERS: params_json,
             self.OUTPUT_METADATA: meta_json,

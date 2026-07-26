@@ -41,6 +41,27 @@ class HelpUrlMixin:
 
     HELP_ANCHOR = ""
 
+    def addParameter(self, parameter, createOutput=True):
+        """Attach native QGIS contextual help before registering a parameter.
+
+        Existing algorithm-specific help always wins. The defensive attribute
+        checks keep this method safe across QGIS/SIP versions and test doubles;
+        a help failure must never prevent an algorithm dialog from opening.
+        """
+        try:
+            current_help = parameter.help()
+            if not current_help:
+                from .parameter_help import resolve_parameter_help
+
+                parameter.setHelp(
+                    resolve_parameter_help(
+                        self.name(), parameter.name(), parameter.description()
+                    )
+                )
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+        return super().addParameter(parameter, createOutput)
+
     def helpUrl(self) -> str:
         """Return the documentation URL QGIS shows as a Help link."""
         anchor = getattr(self, "HELP_ANCHOR", "") or ""
