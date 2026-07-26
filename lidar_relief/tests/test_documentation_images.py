@@ -1,10 +1,28 @@
 import re
+import struct
 from pathlib import Path
 
-from PIL import Image
-
-
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _png_text_metadata(path):
+    metadata = {}
+    with path.open("rb") as stream:
+        assert stream.read(8) == b"\x89PNG\r\n\x1a\n"
+        while True:
+            length_bytes = stream.read(4)
+            if not length_bytes:
+                break
+            length = struct.unpack(">I", length_bytes)[0]
+            chunk_type = stream.read(4)
+            chunk_data = stream.read(length)
+            stream.read(4)  # CRC is validated by image tooling at generation time.
+            if chunk_type == b"tEXt":
+                keyword, value = chunk_data.split(b"\0", 1)
+                metadata[keyword.decode("latin-1")] = value.decode("latin-1")
+            if chunk_type == b"IEND":
+                break
+    return metadata
 
 
 def test_all_markdown_image_files_exist():
@@ -25,8 +43,8 @@ def test_all_markdown_image_files_exist():
 
 def test_tri_figure_records_direct_algorithm_provenance():
     image_path = ROOT / "lidar_relief" / "docs" / "images" / "tri-synthetic-example.png"
-    with Image.open(image_path) as image:
-        assert image.info["Software"] == (
-            "LiDAR Relief compute_ruggedness documentation generator"
-        )
-        assert "compute_ruggedness" in image.info["Description"]
+    metadata = _png_text_metadata(image_path)
+    assert metadata["Software"] == (
+        "LiDAR Relief compute_ruggedness documentation generator"
+    )
+    assert "compute_ruggedness" in metadata["Description"]

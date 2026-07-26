@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS = ROOT / "requirements-audit.txt"
 WORKFLOW = ROOT / ".github" / "workflows" / "security.yml"
+TESTS_WORKFLOW = ROOT / ".github" / "workflows" / "tests.yml"
 
 
 def _pinned_requirements():
@@ -51,9 +52,17 @@ def test_security_workflow_runs_both_scanners_and_pins_actions():
     assert "semgrep scan" in workflow
     assert "requirements-audit.txt" in workflow
     assert "pypa/gh-action-pip-audit@" in workflow
+    assert "progress-spinner:" not in workflow
+    assert "--disable-pip" in workflow
     action_refs = re.findall(r"uses:\s*[^@\s]+@([^\s#]+)", workflow)
     assert action_refs
     assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs)
+
+
+def test_full_test_requirements_do_not_contain_literal_escaped_quotes():
+    workflow = TESTS_WORKFLOW.read_text(encoding="utf-8")
+    assert r"\"Pillow" not in workflow
+    assert r"\"onnx" not in workflow
 
 
 def test_verified_urllib_finding_has_narrow_semgrep_suppression():

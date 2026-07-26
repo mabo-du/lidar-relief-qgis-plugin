@@ -38,4 +38,4 @@ jobs:
         with:
           inputs: requirements-audit.txt
           no-deps: true
-          progress-spinner: "off"
+          internal-be-careful-extra-flags: --disable-pip --progress-spinner=off

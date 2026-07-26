@@ -42,6 +42,12 @@ All notable changes to LiDAR Relief Visualization are documented here.
   ONNX Runtime 1.27.0, with generated test models pinned to supported ONNX
   opset 26.
 
+### Fixed
+
+- Corrected CI dependency quoting, kept documentation provenance checks free of
+  optional Pillow imports, and configured the direct-dependency audit to avoid
+  resolving intentionally independent QGIS package pins.
+
 ### Security
 
 - Added a pinned direct-dependency audit inventory and automated Semgrep and
