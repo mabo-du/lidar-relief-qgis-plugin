@@ -54,7 +54,7 @@ def fetch_repository_xml(
     request = urllib.request.Request(
         url, headers={"User-Agent": "lidar-relief-release-check"}
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         return response.read().decode("utf-8", errors="replace")
 
 

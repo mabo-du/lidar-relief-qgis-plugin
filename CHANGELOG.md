@@ -24,6 +24,17 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 - Contextual-help onboarding now appears once by default instead of at every
   QGIS startup; repeated startup display remains an explicit preference.
+- Updated the optional ML/image stack to Pillow 12.3.0, ONNX 1.22.0, and
+  ONNX Runtime 1.27.0, with generated test models pinned to supported ONNX
+  opset 26.
+
+### Security
+
+- Added a pinned direct-dependency audit inventory and automated Semgrep and
+  pip-audit checks for pull requests, pushes, manual runs, and a weekly
+  schedule.
+- Documented GDAL as a QGIS-managed dependency so its Python bindings are not
+  independently upgraded beyond the version bundled with QGIS.
 
 
 ## [2.1.2] - 2026-07-25

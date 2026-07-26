@@ -95,7 +95,15 @@ def _create_minimal_onnx_model(path):
         initializer=[W_init],
     )
 
-    model = helper.make_model(graph, producer_name="test")
+    # ONNX 1.22's helper defaults to opset 27, while the matching stable
+    # ONNX Runtime 1.27 guarantees support through opset 26. Real models
+    # declare their own opset; pin this generated fixture to the newest
+    # runtime-supported release so the test exercises a valid contract.
+    model = helper.make_model(
+        graph,
+        producer_name="test",
+        opset_imports=[helper.make_opsetid("", 26)],
+    )
     onnx.save(model, path)
 
 

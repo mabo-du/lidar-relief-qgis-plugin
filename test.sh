@@ -24,7 +24,8 @@ set -e
 export OMP_NUM_THREADS=1
 
 echo "=== Installing Optional Test Dependencies ==="
-pip install rio-cogeo reportlab xarray rioxarray onnxruntime onnx 2>/dev/null || true
+pip install rio-cogeo reportlab xarray rioxarray \
+    "Pillow==12.3.0" "onnxruntime==1.27.0" "onnx==1.22.0" 2>/dev/null || true
 pip install cloth-simulation-filter 2>/dev/null || true
 # rvt-py gates the ENTIRE golden-regression suite (test_golden_regression.py
 # does `pytest.importorskip("rvt")` at module scope) and laspy gates the

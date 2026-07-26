@@ -230,6 +230,21 @@ A fully equipped interpreter runs the suite with only CUDA- and PDAL-gated
 tests skipped. QGIS itself is not needed — `core/` is pure NumPy/GDAL, and CI
 runs the QGIS-dependent smoke test inside the official QGIS container.
 
+### Security and dependency auditing
+
+The repository keeps a focused inventory of directly installed Python
+dependencies in `requirements-audit.txt`. To reproduce the automated security
+checks locally:
+
+```bash
+semgrep scan --config auto --error lidar_relief scripts
+pip-audit -r requirements-audit.txt --no-deps --disable-pip
+```
+
+The dependency audit intentionally checks direct packages only. Transitive
+dependencies are resolved by the supported QGIS/Python environment, while GDAL
+must remain aligned with the version and native bindings supplied by QGIS.
+
 ### Runtime smoke test for developers
 
 The repository includes `scripts/qgis_smoke_test.py`, which loads the plugin

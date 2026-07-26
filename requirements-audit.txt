@@ -1,0 +1,22 @@
+# Direct Python dependencies used by LiDAR Relief's core and optional tools.
+#
+# Exact versions make vulnerability results reproducible. This is an audit
+# inventory, not a blanket installer: QGIS distributions already provide many
+# of these packages and users only need the extras for features they use.
+#
+# GDAL is supplied by QGIS and its Python bindings must exactly match QGIS's
+# native libgdal. Never upgrade GDAL independently with pip.
+
+numpy==1.26.4
+scipy==1.17.1
+Pillow==12.3.0
+onnx==1.22.0
+onnxruntime==1.27.0
+rio-cogeo==7.0.2
+reportlab==4.5.1
+xarray==2026.4.0
+rioxarray==0.22.0
+rasterio==1.5.0
+cloth-simulation-filter==1.1.7
+laspy==2.7.0
+rvt-py==2.2.1
