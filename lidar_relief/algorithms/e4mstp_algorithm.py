@@ -89,7 +89,7 @@ class E4MstpAlgorithm(HelpUrlMixin, QgsProcessingAlgorithm):
 
         def add_advanced(parameter):
             parameter.setFlags(
-                parameter.flags() | QgsProcessingParameterDefinition.FlagAdvanced
+                parameter.flags() | QgsProcessingParameterDefinition.Flag.FlagAdvanced
             )
             self.addParameter(parameter)
 

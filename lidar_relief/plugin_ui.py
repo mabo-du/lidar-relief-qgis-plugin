@@ -59,16 +59,16 @@ def show_report_dialog(title: str, text: str, parent=None, extra_buttons=()):
     report.setPlainText(text)
     layout.addWidget(report)
 
-    buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=dialog)
+    buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
     copy_button = QPushButton("Copy", dialog)
-    buttons.addButton(copy_button, QDialogButtonBox.ActionRole)
+    buttons.addButton(copy_button, QDialogButtonBox.ButtonRole.ActionRole)
     copy_button.clicked.connect(
         lambda: QApplication.clipboard().setText(report.toPlainText())
     )
     selected = {"value": None}
     for label, value in extra_buttons:
         button = QPushButton(label, dialog)
-        buttons.addButton(button, QDialogButtonBox.ActionRole)
+        buttons.addButton(button, QDialogButtonBox.ButtonRole.ActionRole)
 
         def choose(_checked=False, selected_value=value):
             selected["value"] = selected_value
@@ -170,12 +170,15 @@ def _checkable_list(title, items, selected, parent):
     listing = QListWidget(dialog)
     for value, label in items:
         item = QListWidgetItem(label, listing)
-        item.setData(Qt.UserRole, value)
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(Qt.Checked if value in selected else Qt.Unchecked)
+        item.setData(Qt.ItemDataRole.UserRole, value)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(
+            Qt.CheckState.Checked if value in selected else Qt.CheckState.Unchecked
+        )
     layout.addWidget(listing)
     buttons = QDialogButtonBox(
-        QDialogButtonBox.Save | QDialogButtonBox.Cancel, parent=dialog
+        QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+        parent=dialog,
     )
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
@@ -183,9 +186,9 @@ def _checkable_list(title, items, selected, parent):
     if not dialog.exec():
         return None
     return [
-        listing.item(index).data(Qt.UserRole)
+        listing.item(index).data(Qt.ItemDataRole.UserRole)
         for index in range(listing.count())
-        if listing.item(index).checkState() == Qt.Checked
+        if listing.item(index).checkState() == Qt.CheckState.Checked
     ]
 
 
@@ -265,7 +268,8 @@ def show_raster_comparison(iface, parent=None):
     form.addRow("Left:", left_choice)
     form.addRow("Right:", right_choice)
     buttons = QDialogButtonBox(
-        QDialogButtonBox.Open | QDialogButtonBox.Cancel, parent=chooser
+        QDialogButtonBox.StandardButton.Open | QDialogButtonBox.StandardButton.Cancel,
+        parent=chooser,
     )
     buttons.accepted.connect(chooser.accept)
     buttons.rejected.connect(chooser.reject)
@@ -291,7 +295,9 @@ def show_raster_comparison(iface, parent=None):
         canvas.setExtent(extent)
         canvases_layout.addWidget(canvas)
     layout.addLayout(canvases_layout)
-    close_buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=dialog)
+    close_buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Close, parent=dialog
+    )
     close_buttons.rejected.connect(dialog.reject)
     layout.addWidget(close_buttons)
     syncing = {"active": False}
@@ -336,7 +342,8 @@ def interpretation_note_dialog(visualization: str, parent=None):
     form.addRow("Confidence:", confidence)
     form.addRow("Visualization:", layer)
     buttons = QDialogButtonBox(
-        QDialogButtonBox.Save | QDialogButtonBox.Cancel, parent=dialog
+        QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel,
+        parent=dialog,
     )
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)

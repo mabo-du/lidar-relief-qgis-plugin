@@ -48,10 +48,10 @@ def show_context_help(parent=None, settings=None) -> bool:
     title, text = guidance_text()
 
     dialog = QMessageBox(parent)
-    dialog.setIcon(QMessageBox.Information)
+    dialog.setIcon(QMessageBox.Icon.Information)
     dialog.setWindowTitle(title)
     dialog.setText(text)
-    dialog.setStandardButtons(QMessageBox.Ok)
+    dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
 
     checkbox = QCheckBox("Show this introduction again when QGIS starts")
     checkbox.setChecked(enabled)

@@ -5,6 +5,15 @@ All notable changes to LiDAR Relief Visualization are documented here.
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-28
+
+**Fixed**
+
+- Replaced 19 unscoped Qt and QGIS enum references with their Qt6-compatible
+  scoped forms while preserving compatibility with QGIS 3 and PyQt5.
+- Added automated source and release guards so legacy enum forms are rejected
+  before future plugin versions are uploaded to plugins.qgis.org.
+
 ## [2.2.0] - 2026-07-27
 
 **Added**
